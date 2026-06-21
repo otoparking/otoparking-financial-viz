@@ -51,9 +51,10 @@ const OP_LABELS: Record<OpKind, string> = {
 
 /** Shared canvas context — route tracing + scenario focus */
 interface FocusState {
-  scId: string; // the clicked scenario node id
-  nodeIds: Set<string>; // all node ids that should stay bright
-  apiIds: Set<string>; // api node ids (used to match edge apiId)
+  scId: string;
+  scIdx: number;
+  nodeIds: Set<string>;
+  apiIds: Set<string>;
 }
 interface CanvasCtxValue {
   routeApiId: string | null;
@@ -457,17 +458,35 @@ function buildGraph() {
   const allTables = new Set<string>();
   for (const sc of SCENARIO_DEFS)
     for (const api of sc.apis) for (const o of api.ops) allTables.add(o.table);
+
+  // Pre-aggregate ops and API-access count per table for richer table nodes
+  const tableOps = new Map<string, { ops: Set<OpKind>; apiCount: number }>();
+  for (const sc of SCENARIO_DEFS)
+    for (const api of sc.apis)
+      for (const o of api.ops) {
+        if (!tableOps.has(o.table))
+          tableOps.set(o.table, { ops: new Set(), apiCount: 0 });
+        const tm = tableOps.get(o.table)!;
+        for (const op of o.ops) tm.ops.add(op);
+        tm.apiCount++;
+      }
+
   const tableList = [...allTables];
   const TT = tableList.length;
   for (let ti = 0; ti < TT; ti++) {
     const a = (ti / TT) * Math.PI * 2 - Math.PI / 2;
     const p = polar(TBL_R, a);
     const t = tableList[ti];
+    const tm = tableOps.get(t);
     nodes.push({
       id: `tbl-${t.replace(/[^a-z0-9]/gi, "-")}`,
       type: "dbTable",
       position: p,
-      data: { label: t },
+      data: {
+        label: t,
+        ops: [...(tm?.ops ?? [])],
+        apiCount: tm?.apiCount ?? 0,
+      },
     });
   }
 
@@ -510,6 +529,8 @@ function buildGraph() {
         data: {
           method: api.method,
           path: `:${api.port}${api.path}`,
+          desc: api.desc,
+          opTypes: [...new Set(api.ops.flatMap((o) => o.ops))],
           color: sc.color,
         },
       });
@@ -538,6 +559,7 @@ function buildGraph() {
               desc: o.desc,
               color: sc.color,
               apiId: aId,
+              table: o.table,
               labelOffset: idx,
             },
           });
@@ -610,60 +632,136 @@ function ScenarioGroupNode({ data, id }: NodeProps) {
 }
 
 function ApiEndpointNode({ data, id }: NodeProps) {
-  const d = data as unknown as { method: string; path: string; color: string };
+  const d = data as unknown as {
+    method: string;
+    path: string;
+    desc?: string;
+    opTypes?: OpKind[];
+    color: string;
+  };
   const T = useTheme();
   const { focus } = useContext(CanvasCtx);
   const inFocus = focus === null || focus.nodeIds.has(id);
   return (
     <div
-      className="rounded-md border px-2.5 py-1.5 font-mono shadow-sm"
+      className="rounded-md border px-2.5 py-2 font-mono shadow-sm"
       style={{
         background: T.card,
         borderColor: d.color + "40",
         borderLeftWidth: 3,
         borderLeftColor: d.color,
-        maxWidth: 210,
+        width: 200,
         opacity: inFocus ? 1 : 0.07,
         transition: "opacity 0.25s ease",
       }}
     >
       <RadialHandles />
-      <div className="flex items-center gap-1.5">
-        <span
-          className="font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0"
-          style={{ background: d.color + "22", color: d.color }}
-        >
-          {d.method}
-        </span>
-        <span className="text-[11px] text-zinc-600 dark:text-zinc-300 truncate">
-          {d.path}
-        </span>
+      <div className="flex flex-col gap-1.5">
+        {/* Method badge + path */}
+        <div className="flex items-center gap-1.5">
+          <span
+            className="font-bold px-1.5 py-0.5 rounded text-[10px] shrink-0"
+            style={{ background: d.color + "22", color: d.color }}
+          >
+            {d.method}
+          </span>
+          <span
+            className="text-[10px] leading-snug break-all"
+            style={{ color: T.textMuted }}
+          >
+            {d.path}
+          </span>
+        </div>
+        {/* Description */}
+        {d.desc && (
+          <span
+            className="text-[9px] leading-snug italic"
+            style={{ color: T.textDim }}
+          >
+            {d.desc}
+          </span>
+        )}
+        {/* Op-type summary badges */}
+        {d.opTypes && d.opTypes.length > 0 && (
+          <div className="flex gap-0.5 flex-wrap">
+            {d.opTypes.map((op) => (
+              <span
+                key={op}
+                className="text-[8px] px-1 py-px rounded font-bold"
+                style={{
+                  color: OP_COLORS[op],
+                  background: OP_COLORS[op] + "18",
+                  border: `1px solid ${OP_COLORS[op]}30`,
+                }}
+              >
+                {OP_LABELS[op]}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function DbTableNode({ data, id }: NodeProps) {
-  const d = data as unknown as { label: string };
+  const d = data as unknown as {
+    label: string;
+    ops?: OpKind[];
+    apiCount?: number;
+  };
   const T = useTheme();
   const { focus } = useContext(CanvasCtx);
   const inFocus = focus === null || focus.nodeIds.has(id);
   return (
     <div
-      className="rounded-md border px-2.5 py-1.5 text-[11px] font-mono shadow-sm flex items-center gap-1.5"
+      className="rounded-md border px-2.5 py-2 font-mono shadow-sm"
       style={{
         background: T.card,
         borderColor: T.border,
-        minWidth: 130,
+        minWidth: 140,
         opacity: inFocus ? 1 : 0.07,
         transition: "opacity 0.25s ease",
       }}
     >
       <RadialHandles />
-      <Database className="h-3.5 w-3.5 text-zinc-400 shrink-0" />
-      <span className="text-zinc-700 dark:text-zinc-300 font-semibold">
-        {d.label}
-      </span>
+      <div className="flex flex-col gap-1">
+        {/* Table name row */}
+        <div className="flex items-center gap-1.5">
+          <Database
+            className="h-3.5 w-3.5 shrink-0"
+            style={{ color: T.textDim }}
+          />
+          <span className="text-[11px] font-semibold" style={{ color: T.text }}>
+            {d.label}
+          </span>
+          {(d.apiCount ?? 0) > 0 && (
+            <span
+              className="ml-auto text-[8px] px-1 py-px rounded-full"
+              style={{ background: T.borderSubtle, color: T.textDim }}
+            >
+              ×{d.apiCount}
+            </span>
+          )}
+        </div>
+        {/* Op-type badges */}
+        {d.ops && d.ops.length > 0 && (
+          <div className="flex gap-0.5 flex-wrap">
+            {d.ops.map((op) => (
+              <span
+                key={op}
+                className="text-[8px] px-1 py-px rounded font-bold"
+                style={{
+                  color: OP_COLORS[op],
+                  background: OP_COLORS[op] + "18",
+                }}
+              >
+                {OP_LABELS[op]}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -774,10 +872,18 @@ function OpEdge({
   const { routeApiId, focus } = useContext(CanvasCtx);
   const T = useTheme();
   const d = data as unknown as
-    | { op: OpKind; desc: string; color: string; apiId?: string }
+    | {
+        op: OpKind;
+        desc: string;
+        color: string;
+        apiId?: string;
+        table: string;
+        labelOffset: number;
+      }
     | undefined;
   const op = d?.op ?? "select";
   const color = OP_COLORS[op];
+  const offset = d?.labelOffset ?? 0;
   const routeActive = !!routeApiId && d?.apiId === routeApiId;
   const active = hovered || !!selected || routeActive;
   const inFocus =
@@ -792,6 +898,109 @@ function OpEdge({
     targetPosition,
     curvature: 0.2,
   });
+
+  /* ── Build explanation ── */
+  const table = d?.table ?? "?";
+  const explain = useMemo(() => {
+    const lines: { label: string; value: string }[] = [];
+    lines.push({ label: "Table", value: table });
+    switch (op) {
+      case "select":
+        lines.push({
+          label: "Action",
+          value:
+            "Read rows from the database without locking or modifying them",
+        });
+        lines.push({
+          label: "SQL",
+          value: `SELECT ... FROM ${table} WHERE ...`,
+        });
+        lines.push({
+          label: "Why",
+          value:
+            "Look up existing data before making a decision — e.g. check wallet balance, verify booking exists, resolve commission rate",
+        });
+        break;
+      case "insert":
+        lines.push({
+          label: "Action",
+          value:
+            "Create a new, permanent row — visible to all future queries immediately after commit",
+        });
+        lines.push({
+          label: "SQL",
+          value: `INSERT INTO ${table} (...) VALUES (...)`,
+        });
+        lines.push({
+          label: "Why",
+          value:
+            "Record a new fact in the system — booking created, payment trace written, escrow record stored, ledger entry logged",
+        });
+        break;
+      case "update":
+        lines.push({
+          label: "Action",
+          value:
+            "Change an existing row's value — does NOT lock the row on its own",
+        });
+        lines.push({
+          label: "SQL",
+          value: `UPDATE ${table} SET ... = ... WHERE ...`,
+        });
+        lines.push({
+          label: "Why",
+          value:
+            "Mutate state — debit a wallet, mark booking COMPLETED, release escrow, reset a counter",
+        });
+        break;
+      case "lock":
+        lines.push({
+          label: "Action",
+          value:
+            "SELECT ... FOR UPDATE — acquires an exclusive row-level lock, blocking other transactions from reading or writing this row until commit/rollback",
+        });
+        lines.push({
+          label: "SQL",
+          value: `SELECT ... FROM ${table} WHERE ... FOR UPDATE`,
+        });
+        lines.push({
+          label: "Why",
+          value:
+            "Prevents race conditions. Without this, two concurrent operations could read the same balance and both debit, causing a lost update. Always paired with UPDATE in the same transaction.",
+        });
+        break;
+      case "delete":
+        lines.push({
+          label: "Action",
+          value: "Permanently remove a row — irreversible after commit",
+        });
+        lines.push({ label: "SQL", value: `DELETE FROM ${table} WHERE ...` });
+        lines.push({
+          label: "Why",
+          value:
+            "Clean up test data or remove invalid records. Used by the Hard Reset flow to zero out all test accounts.",
+        });
+        break;
+      case "upsert":
+        lines.push({
+          label: "Action",
+          value:
+            "INSERT ... ON CONFLICT DO UPDATE — creates a row if it doesn't exist, updates it if it does, all in one atomic statement",
+        });
+        lines.push({
+          label: "SQL",
+          value: `INSERT INTO ${table} (...) VALUES (...) ON CONFLICT (...) DO UPDATE SET ...`,
+        });
+        lines.push({
+          label: "Why",
+          value:
+            "Idempotent write — perfect for counters and accumulators. Used by the Cash Commission Tracker: first cash session creates the row, subsequent sessions add to the running total.",
+        });
+        break;
+    }
+    if (d?.desc) lines.push({ label: "Impact", value: d.desc });
+    return lines;
+  }, [op, table, d]);
 
   return (
     <>
@@ -821,7 +1030,7 @@ function OpEdge({
         <div
           style={{
             position: "absolute",
-            transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)`,
+            transform: `translate(-50%,-50%) translate(${labelX}px,${labelY + offset * 14}px)`,
             pointerEvents: "none",
             zIndex: active ? 20 : 10,
             fontFamily: "monospace",
@@ -859,9 +1068,192 @@ function OpEdge({
               </span>
             )}
           </div>
+
+          {/* Explanation panel — visible only on direct hover of this edge */}
+          {hovered && (
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: "100%",
+                marginTop: 6,
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 8,
+                padding: "8px 10px",
+                minWidth: 220,
+                maxWidth: 300,
+                boxShadow: `0 8px 24px rgba(0,0,0,0.25), 0 0 0 1px ${color}20`,
+                zIndex: 30,
+                pointerEvents: "auto",
+              }}
+            >
+              {explain.map((line, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginBottom: i < explain.length - 1 ? 4 : 0,
+                    fontSize: 10,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "monospace",
+                      fontWeight: 700,
+                      color: color,
+                      minWidth: 44,
+                      flexShrink: 0,
+                      textTransform: "uppercase",
+                      fontSize: 9,
+                      opacity: 0.8,
+                    }}
+                  >
+                    {line.label}
+                  </span>
+                  <span
+                    style={{
+                      color: line.label === "SQL" ? T.textDim : T.text,
+                      fontFamily:
+                        line.label === "SQL" ? "monospace" : undefined,
+                      fontSize: line.label === "SQL" ? 9 : 10,
+                      whiteSpace: line.label === "SQL" ? "pre-wrap" : "normal",
+                    }}
+                  >
+                    {line.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </EdgeLabelRenderer>
     </>
+  );
+}
+
+/* ── Info Panel ─────────────────────────────────────────────────────── */
+
+function InfoPanel({ scIdx, onClose }: { scIdx: number; onClose: () => void }) {
+  const T = useTheme();
+  const sc = SCENARIO_DEFS[scIdx];
+  if (!sc) return null;
+  const uniqueTables = new Set(
+    sc.apis.flatMap((a) => a.ops.map((o) => o.table)),
+  );
+
+  return (
+    <div
+      className="absolute right-3 top-3 bottom-14 z-20 flex flex-col rounded-xl overflow-hidden shadow-2xl"
+      style={{
+        width: 292,
+        border: `1px solid ${sc.color}45`,
+        background: T.panel,
+      }}
+    >
+      {/* ── Header ── */}
+      <div
+        className="flex items-center gap-2.5 px-3.5 py-2.5 shrink-0"
+        style={{ background: sc.color }}
+      >
+        <span className="text-[13px] font-bold font-mono text-white flex-1 tracking-wide">
+          {sc.label}
+        </span>
+        <span className="text-[10px] text-white/60 font-mono shrink-0">
+          {sc.apis.length} API{sc.apis.length !== 1 ? "s" : ""} ·{" "}
+          {uniqueTables.size} tables
+        </span>
+        <button
+          onClick={onClose}
+          aria-label="Close panel"
+          className="text-white/50 hover:text-white transition-colors text-lg leading-none font-bold ml-1"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* ── Scrollable API list ── */}
+      <div className="overflow-y-auto flex-1 divide-y divide-zinc-200 dark:divide-zinc-700/50">
+        {sc.apis.map((api, i) => (
+          <div key={i} className="px-3.5 py-3">
+            {/* API title */}
+            <div className="flex items-center gap-1.5 mb-1">
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded font-mono shrink-0"
+                style={{ background: sc.color + "25", color: sc.color }}
+              >
+                {api.method}
+              </span>
+              <span
+                className="text-[9px] font-mono shrink-0"
+                style={{ color: T.textDim }}
+              >
+                :{api.port}
+              </span>
+              <span
+                className="text-[10px] font-mono min-w-0 break-all"
+                style={{ color: T.text }}
+              >
+                {api.path}
+              </span>
+            </div>
+            <p
+              className="text-[9px] italic mb-2.5 leading-snug"
+              style={{ color: T.textDim }}
+            >
+              {api.desc}
+            </p>
+
+            {/* DB operations */}
+            <div className="space-y-1.5">
+              {api.ops.map((o, j) => (
+                <div
+                  key={j}
+                  className="rounded-lg px-2.5 py-2"
+                  style={{
+                    background: T.card,
+                    border: `1px solid ${T.borderSubtle}`,
+                  }}
+                >
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span
+                      className="text-[9px] font-mono font-semibold flex-1 truncate"
+                      style={{ color: T.textMuted }}
+                      title={o.table}
+                    >
+                      {o.table}
+                    </span>
+                    <div className="flex gap-0.5 shrink-0 flex-wrap justify-end">
+                      {o.ops.map((op) => (
+                        <span
+                          key={op}
+                          className="text-[8px] px-1 py-px rounded font-bold font-mono"
+                          style={{
+                            color: OP_COLORS[op],
+                            background: OP_COLORS[op] + "20",
+                            border: `1px solid ${OP_COLORS[op]}40`,
+                          }}
+                        >
+                          {OP_LABELS[op]}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <p
+                    className="text-[8px] leading-snug"
+                    style={{ color: T.textDim }}
+                  >
+                    {o.desc}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -895,6 +1287,32 @@ export default function ApiDbFlowCanvas() {
   /* ── Scenario focus ── */
   const [focusState, setFocusState] = useState<FocusState | null>(null);
 
+  // Filter nodes/edges when a scenario is focused — hides everything else
+  const visibleNodes = useMemo(() => {
+    if (!focusState) return nodes;
+    return nodes.filter((n) => focusState.nodeIds.has(n.id));
+  }, [nodes, focusState]);
+  const visibleEdges = useMemo(() => {
+    if (!focusState) return edges;
+    return edges.filter((e) => {
+      const apiId = (e.data as Record<string, unknown>)?.apiId as
+        | string
+        | undefined;
+      const apiIds = (e.data as Record<string, unknown>)?.apiIds as
+        | string[]
+        | undefined;
+      if (apiId) return focusState.apiIds.has(apiId);
+      if (apiIds) return apiIds.some((id) => focusState.apiIds.has(id));
+      // Keep root→scenario connector edges if the source is the focused scenario
+      if (e.type === "connectorEdge" && e.source === focusState.scId)
+        return true;
+      // Keep any edge where both source and target are in the focus set
+      return (
+        focusState.nodeIds.has(e.source) && focusState.nodeIds.has(e.target)
+      );
+    });
+  }, [edges, focusState]);
+
   const handleNodeClick = useCallback(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (_: any, node: Node) => {
@@ -914,7 +1332,10 @@ export default function ApiDbFlowCanvas() {
           if (edge.type === "opEdge" && apiIds.has(edge.source))
             nodeIds.add(edge.target);
         }
-        return { scId, nodeIds, apiIds };
+        const scIdx = SCENARIO_DEFS.findIndex(
+          (s) => `sc-${s.label.toLowerCase().replace(/\s+/g, "-")}` === scId,
+        );
+        return { scId, scIdx, nodeIds, apiIds };
       });
       // Clear any locked route when switching focus
       setLockedApiId(null);
@@ -961,14 +1382,14 @@ export default function ApiDbFlowCanvas() {
     <CanvasCtx.Provider value={{ routeApiId, focus: focusState }}>
       <div className="w-full h-full relative">
         <ReactFlow
-          nodes={nodes}
-          edges={edges}
+          nodes={visibleNodes}
+          edges={visibleEdges}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
           fitViewOptions={{ padding: 0.28 }}
           nodeOrigin={[0.5, 0.5]}
-          nodesDraggable
+          nodesDraggable={focusState === null}
           nodesConnectable={false}
           elementsSelectable
           minZoom={0.1}
@@ -982,6 +1403,13 @@ export default function ApiDbFlowCanvas() {
         >
           <Background color={T.border} gap={24} size={1} />
         </ReactFlow>
+        {/* Info panel — slides in when a scenario is focused */}
+        {focusState !== null && (
+          <InfoPanel
+            scIdx={focusState.scIdx}
+            onClose={() => setFocusState(null)}
+          />
+        )}
         <div className="absolute bottom-3 right-3 z-10 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white/90 dark:bg-zinc-900/90 px-3 py-2 shadow-sm">
           <div className="text-[9px] font-mono font-semibold text-zinc-500 mb-1.5">
             Operations
