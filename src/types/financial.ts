@@ -1,4 +1,9 @@
-export type WalletType = "driver" | "commission" | "settlement" | "lot";
+export type WalletType =
+  | "driver"
+  | "commission"
+  | "settlement"
+  | "lot"
+  | "cash-tracker";
 
 export interface WalletState {
   id: WalletType;
@@ -86,11 +91,18 @@ export interface ParticleDataV2 {
   startTime: number;
 }
 
-export type MetricKey = "circulation" | "commission" | "escrow" | "lotRevenue";
+export type MetricKey =
+  | "circulation"
+  | "commission"
+  | "escrow"
+  | "lotRevenue"
+  | "cashCommission"
+  | "agentTally";
 
 export interface MetricCard {
   key: MetricKey;
   label: string;
   value: number;
   color: string;
+  subtitle?: string;
 }

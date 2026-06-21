@@ -228,6 +228,24 @@ const EDGES = [
     targetHandle: "l",
     curvature: 0.35,
   },
+  // Driver → Cash Tracker (physical cash flow — dashed, gray)
+  {
+    id: "e-driver-cash",
+    source: "driver",
+    target: "cash-tracker",
+    sourceHandle: "r-out",
+    targetHandle: "t-in",
+    curvature: 0.3,
+  },
+  // Cash Tracker → Commission (month-end netting — dashed)
+  {
+    id: "e-cash-commission",
+    source: "cash-tracker",
+    target: "commission",
+    sourceHandle: "b-out",
+    targetHandle: "r",
+    curvature: 0.3,
+  },
 ];
 
 function buildStepMap(scenario: PRDScenario | null): Map<string, number> {

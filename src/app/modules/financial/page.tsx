@@ -45,6 +45,10 @@ import MonitorPanel from "@/components/MonitorPanel";
 import type { MonitorEvent } from "@/components/MonitorPanel";
 import SettingsPanel, { useTestSettings } from "@/components/SettingsPanel";
 import { useTheme } from "@/hooks/useTheme";
+import AgentCashPanel from "@/components/AgentCashPanel";
+import { fetchCashTracker } from "@/lib/admin-api";
+import ApiDbMap from "@/components/ApiDbMap";
+import ApiDbFlowCanvas from "@/components/ApiDbFlowCanvas";
 
 /* ── Backend Wallet Architecture ───────────────────────────────────────
  *
@@ -110,6 +114,19 @@ const INITIAL_WALLETS: WalletState[] = [
     x: 55,
     y: 84,
   },
+  {
+    id: "cash-tracker",
+    label: "Cash Tracker",
+    subtitle: "Agent cash commissions · oto_cash_commission_tracker",
+    balance: 0,
+    blocked: 0,
+    previousBalance: 0,
+    previousBlocked: 0,
+    color: "#A855F7",
+    kind: "ledger",
+    x: 160,
+    y: 44,
+  },
 ];
 
 const INITIAL_METRICS: MetricCard[] = [
@@ -122,6 +139,13 @@ const INITIAL_METRICS: MetricCard[] = [
   { key: "commission", label: "Commission Earned", value: 0, color: "#CBFF00" },
   { key: "escrow", label: "Escrow Held", value: 0, color: "#BA7517" },
   { key: "lotRevenue", label: "Lot Revenue", value: 0, color: "#005249" },
+  {
+    key: "cashCommission",
+    label: "Cash Owed",
+    value: 0,
+    color: "#A855F7",
+    subtitle: "oto_cash_commission_tracker",
+  },
 ];
 
 function formatMAD(n: number): string {
@@ -168,6 +192,7 @@ export default function FinancialModule({
     escrowActive: 0,
     escrowReleased: 0,
     openDebts: 0,
+    cashCommission: 0,
   });
   const [liveData, setLiveData] = useState<LiveData | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
@@ -212,9 +237,10 @@ export default function FinancialModule({
     },
     [onMonitor],
   );
-  const [rightPanel, setRightPanel] = useState<"scenarios" | "monitor">(
-    "scenarios",
-  );
+  const [rightPanel, setRightPanel] = useState<
+    "scenarios" | "monitor" | "agent-cash" | "api-db"
+  >("scenarios");
+  const [canvasView, setCanvasView] = useState<"flow" | "api-map">("flow");
 
   useEffect(() => {
     let mounted = true;
@@ -226,6 +252,9 @@ export default function FinancialModule({
 
       // Fetch real cash ledger from backend
       const cashLedger = await fetchCashLedger();
+
+      // Fetch cash commission tracker from admin backend
+      const cashTracker = await fetchCashTracker().catch(() => null);
 
       // Check for active booking
       const ab = await checkActiveBooking();
@@ -269,6 +298,13 @@ export default function FinancialModule({
                 balance: cashLedger.lotCommission,
               };
             }
+            if (w.id === "cash-tracker" && cashTracker) {
+              return {
+                ...w,
+                previousBalance: w.balance,
+                balance: cashTracker.commissionOwed,
+              };
+            }
             return w;
           }),
         );
@@ -297,6 +333,13 @@ export default function FinancialModule({
             value: data.tenant?.merchantBalance ?? 0,
             color: "#005249",
           },
+          {
+            key: "cashCommission",
+            label: "Cash Owed",
+            value: cashTracker?.commissionOwed ?? 0,
+            color: "#A855F7",
+            subtitle: "oto_cash_commission_tracker",
+          },
         ]);
         if (data.tenant) {
           setLedger((prev) => ({
@@ -304,6 +347,7 @@ export default function FinancialModule({
             escrowActive: data.tenant!.escrowTotal,
             cashTally: cashLedger?.cashTally ?? 0,
             openDebts: cashLedger?.openDebts ?? 0,
+            cashCommission: cashTracker?.commissionOwed ?? 0,
           }));
         }
       }
@@ -333,6 +377,7 @@ export default function FinancialModule({
           cashTally: ledger.cashTally,
           escrow: ledger.escrowActive,
           openDebts: ledger.openDebts,
+          cashCommission: ledger.cashCommission,
         },
         null,
         2,
@@ -1072,6 +1117,7 @@ export default function FinancialModule({
       escrowActive: 0,
       escrowReleased: 0,
       openDebts: 0,
+      cashCommission: 0,
     });
     simDepthRef.current = 0;
     onActivity(null as unknown as string);
@@ -1154,21 +1200,50 @@ export default function FinancialModule({
   return (
     <div ref={containerRef} className="flex-1 flex overflow-hidden">
       <div className="w-[65%] relative overflow-hidden">
-        <FlowCanvas
-          wallets={wallets}
-          ledger={ledger}
-          liveData={liveData}
-          lastSynced={lastSynced}
-          activeBooking={activeBooking}
-          activeWallets={activeWallets}
-          activeFlowPairs={activeFlowPairs}
-          hoveredFlowPairs={hoveredFlowPairs}
-          hoveredScenario={hoveredScenario}
-          runningScenario={runningScenario}
-          simStep={simStep}
-          simTotalSteps={simTotalSteps}
-          formatMAD={formatMAD}
-        />
+        {/* Canvas view toggle */}
+        <div className="absolute top-3 right-3 z-10 flex rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 overflow-hidden shadow-sm">
+          <button
+            onClick={() => setCanvasView("flow")}
+            className="px-3 py-1.5 text-[10px] font-mono font-semibold transition-colors"
+            style={{
+              background:
+                canvasView === "flow" ? T.accent + "18" : "transparent",
+              color: canvasView === "flow" ? T.accent : T.textDim,
+            }}
+          >
+            Flow
+          </button>
+          <button
+            onClick={() => setCanvasView("api-map")}
+            className="px-3 py-1.5 text-[10px] font-mono font-semibold transition-colors border-l border-zinc-200 dark:border-zinc-700"
+            style={{
+              background:
+                canvasView === "api-map" ? T.accent + "18" : "transparent",
+              color: canvasView === "api-map" ? T.accent : T.textDim,
+            }}
+          >
+            API Map
+          </button>
+        </div>
+        {canvasView === "flow" ? (
+          <FlowCanvas
+            wallets={wallets}
+            ledger={ledger}
+            liveData={liveData}
+            lastSynced={lastSynced}
+            activeBooking={activeBooking}
+            activeWallets={activeWallets}
+            activeFlowPairs={activeFlowPairs}
+            hoveredFlowPairs={hoveredFlowPairs}
+            hoveredScenario={hoveredScenario}
+            runningScenario={runningScenario}
+            simStep={simStep}
+            simTotalSteps={simTotalSteps}
+            formatMAD={formatMAD}
+          />
+        ) : (
+          <ApiDbFlowCanvas />
+        )}
       </div>
       <div className="w-[35%] min-w-[360px] flex flex-col overflow-hidden border-l border-border">
         {/* ── Panel switcher tab bar ── */}
@@ -1180,52 +1255,61 @@ export default function FinancialModule({
             background: T.header,
           }}
         >
-          {(["scenarios", "monitor"] as const).map((tab) => {
-            const active = rightPanel === tab;
-            const label = tab === "scenarios" ? "Scenarios" : "Monitor";
-            return (
-              <button
-                key={tab}
-                onClick={() => setRightPanel(tab)}
-                style={{
-                  flex: 1,
-                  height: 36,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  background: "transparent",
-                  border: "none",
-                  borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
-                  cursor: "pointer",
-                  fontFamily: "monospace",
-                  fontSize: 9,
-                  fontWeight: 700,
-                  letterSpacing: "0.12em",
-                  textTransform: "uppercase",
-                  color: active ? T.accent : T.textDim,
-                  transition: "color 150ms ease, border-color 150ms ease",
-                }}
-              >
-                {label}
-                {tab === "monitor" && monitorEvents.length > 0 && (
-                  <span
-                    style={{
-                      fontSize: 8,
-                      fontFamily: "monospace",
-                      background: T.accentBg,
-                      border: `1px solid ${T.accent}44`,
-                      color: T.accent,
-                      borderRadius: 3,
-                      padding: "0px 4px",
-                    }}
-                  >
-                    {monitorEvents.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+          {(["scenarios", "monitor", "agent-cash", "api-db"] as const).map(
+            (tab) => {
+              const active = rightPanel === tab;
+              const label =
+                tab === "scenarios"
+                  ? "Scenarios"
+                  : tab === "monitor"
+                    ? "Monitor"
+                    : tab === "agent-cash"
+                      ? "Agent & Cash"
+                      : "API→DB";
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setRightPanel(tab)}
+                  style={{
+                    flex: 1,
+                    height: 36,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    background: "transparent",
+                    border: "none",
+                    borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
+                    cursor: "pointer",
+                    fontFamily: "monospace",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: "0.12em",
+                    textTransform: "uppercase",
+                    color: active ? T.accent : T.textDim,
+                    transition: "color 150ms ease, border-color 150ms ease",
+                  }}
+                >
+                  {label}
+                  {tab === "monitor" && monitorEvents.length > 0 && (
+                    <span
+                      style={{
+                        fontSize: 8,
+                        fontFamily: "monospace",
+                        background: T.accentBg,
+                        border: `1px solid ${T.accent}44`,
+                        color: T.accent,
+                        borderRadius: 3,
+                        padding: "0px 4px",
+                      }}
+                    >
+                      {monitorEvents.length}
+                    </span>
+                  )}
+                </button>
+              );
+            },
+          )}
         </div>
 
         {/* ── Pinned top: settings + metrics (always visible) ── */}
@@ -1244,8 +1328,16 @@ export default function FinancialModule({
               onReleaseEscrow={handleReleaseEscrow}
               log={log}
             />
-          ) : (
+          ) : rightPanel === "monitor" ? (
             <MonitorPanel events={monitorEvents} onClear={clearMonitorEvents} />
+          ) : rightPanel === "agent-cash" ? (
+            <div className="flex-1 overflow-auto p-3">
+              <AgentCashPanel />
+            </div>
+          ) : (
+            <div className="flex-1 overflow-auto p-3">
+              <ApiDbMap />
+            </div>
           )}
         </div>
       </div>

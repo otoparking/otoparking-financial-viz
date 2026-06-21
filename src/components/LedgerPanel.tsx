@@ -13,6 +13,8 @@ export interface LedgerData {
   escrowReleased: number;
   /** Open debts from unreconciled cash sessions (oto_debts) */
   openDebts: number;
+  /** Cash commission owed from oto_cash_commission_tracker */
+  cashCommission: number;
 }
 
 interface LedgerPanelProps {
