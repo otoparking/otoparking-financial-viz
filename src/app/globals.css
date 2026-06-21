@@ -1,26 +1,635 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHADCN/UI — THEME TOKENS (RADIX-NOVA STYLE)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@custom-variant dark (&:is(.dark *));
+@custom-variant light (&:is(.light *));
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-3xl: calc(var(--radius) * 2.2);
+    --radius-4xl: calc(var(--radius) * 2.6);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    /* OtoParking brand colors exposed as Tailwind utilities */
+    --color-otopark-teal: var(--brand-teal);
+    --color-otopark-lime: var(--accent-primary);
+    --color-otopark-success: var(--success);
+    --color-otopark-danger: var(--danger);
+    --color-otopark-escrow: var(--escrow-pending);
+
+    /* Fonts */
+    --font-sans:
+        "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ═══════════════════════════════════════════════════════════════════════════
+   DARK THEME (DEFAULT) — OtoParking deep teal brand
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root,
+html.dark {
+    --radius: 0.625rem;
+
+    /* shadcn semantic tokens mapped to OtoParking palette */
+    --background: oklch(0.14 0.03 185);
+    --foreground: oklch(0.93 0.02 170);
+    --card: oklch(0.24 0.06 175);
+    --card-foreground: oklch(0.93 0.01 170);
+    --popover: oklch(0.17 0.028 183);
+    --popover-foreground: oklch(0.93 0.01 170);
+    --primary: oklch(0.88 0.22 115);
+    --primary-foreground: oklch(0.15 0.05 185);
+    --secondary: oklch(0.25 0.03 175);
+    --secondary-foreground: oklch(0.93 0.01 170);
+    --muted: oklch(0.22 0.025 183);
+    --muted-foreground: oklch(0.62 0.04 172);
+    --accent: oklch(0.25 0.04 170);
+    --accent-foreground: oklch(0.93 0.01 170);
+    --destructive: oklch(0.58 0.18 30);
+    --destructive-foreground: oklch(0.97 0 0);
+    --border: oklch(0.4 0.05 175 / 0.4);
+    --input: oklch(0.4 0.05 175 / 0.4);
+    --ring: oklch(0.88 0.22 115 / 0.5);
+    --card-shadow: 0 4px 24px oklch(0 0 0 / 0.3);
+    --card-shadow-hover: 0 8px 32px oklch(0 0 0 / 0.45);
+    --chart-1: oklch(0.65 0.18 250);
+    --chart-2: oklch(0.88 0.22 115);
+    --chart-3: oklch(0.55 0.12 65);
+    --chart-4: oklch(0.45 0.08 175);
+    --chart-5: oklch(0.5 0.15 140);
+    --sidebar: oklch(0.17 0.028 183);
+    --sidebar-foreground: oklch(0.93 0.01 170);
+    --sidebar-primary: oklch(0.88 0.22 115);
+    --sidebar-primary-foreground: oklch(0.15 0.05 185);
+    --sidebar-accent: oklch(0.25 0.03 175);
+    --sidebar-accent-foreground: oklch(0.93 0.01 170);
+    --sidebar-border: oklch(0.35 0.04 175 / 0.3);
+    --sidebar-ring: oklch(0.88 0.22 115 / 0.5);
+
+    /* OtoParking legacy design tokens (kept for FlowCanvas custom elements) */
+    --bg-page: oklch(0.14 0.03 185);
+    --bg-card: oklch(0.24 0.06 175);
+    --bg-glass: oklch(0.2 0.03 180 / 0.65);
+    --header-bg: oklch(0.15 0.028 185);
+    --brand-teal: oklch(0.38 0.06 178);
+    --accent-primary: oklch(0.88 0.22 115);
+    --success: oklch(0.53 0.12 155);
+    --danger: oklch(0.55 0.17 30);
+    --escrow-pending: oklch(0.52 0.12 65);
+    --text-primary: oklch(0.93 0.01 170);
+    --text-muted: oklch(0.62 0.04 172);
+    --border-default: oklch(0.35 0.04 175 / 0.25);
+    --border-active: oklch(0.88 0.22 115 / 0.6);
+    --border-subtle: oklch(0.35 0.04 175 / 0.12);
+    --hover-bg: oklch(0.25 0.04 170 / 0.5);
+    --hover-bg-light: oklch(0.25 0.04 170 / 0.25);
+    --flow-line-base: oklch(0.88 0.22 115 / 0.18);
+    --flow-line-active: oklch(0.88 0.22 115 / 0.7);
+    --scrollbar-thumb: oklch(0.88 0.22 115 / 0.15);
+    --scrollbar-thumb-hover: oklch(0.88 0.22 115 / 0.3);
+    --wallet-driver: oklch(0.6 0.15 250);
+    --wallet-commission: oklch(0.88 0.22 115);
+    --wallet-escrow: oklch(0.52 0.12 65);
+    --wallet-lot: oklch(0.38 0.06 178);
+    --wallet-cash: oklch(0.53 0.12 155);
+    --log-old: oklch(0.62 0.04 172 / 0.5);
+    --toggle-bg: oklch(0.25 0.04 170 / 0.5);
+    --toggle-border: oklch(0.88 0.22 115 / 0.3);
+
+    /* Edge info panel (FlowCanvas JSX inline-style overrides) */
+    --edge-info-bg: oklch(0.18 0.04 180 / 0.92);
+    --edge-info-border: rgba(203, 255, 0, 0.25);
+    --edge-info-text: oklch(0.93 0.01 170);
+    --edge-info-muted: oklch(0.62 0.04 172);
+    --edge-label-active-bg: #cbff00;
+    --edge-label-active-text: #0d1f1c;
+    --edge-accent: #cbff00;
+    --edge-accent-alpha: rgba(203, 255, 0, 0.12);
+    --reactflow-bg-dots: rgba(203, 255, 0, 0.06);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — Clean, readable palette
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.light {
+    /* shadcn semantic tokens — light mode */
+    --background: oklch(0.98 0.003 100);
+    --foreground: oklch(0.18 0.02 260);
+    --card: oklch(0.995 0.002 95);
+    --card-foreground: oklch(0.18 0.02 260);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.18 0.02 260);
+    --primary: oklch(0.5 0.18 150);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.96 0.006 100);
+    --secondary-foreground: oklch(0.25 0.02 250);
+    --muted: oklch(0.955 0.005 100);
+    --muted-foreground: oklch(0.5 0.02 200);
+    --accent: oklch(0.93 0.03 150);
+    --accent-foreground: oklch(0.15 0.03 180);
+    --destructive: oklch(0.52 0.2 25);
+    --destructive-foreground: oklch(0.99 0 0);
+    --border: oklch(0.88 0.012 150);
+    --input: oklch(0.88 0.012 150);
+    --ring: oklch(0.5 0.18 150 / 0.4);
+    --card-shadow: 0 1px 3px oklch(0 0 0 / 0.06), 0 1px 2px oklch(0 0 0 / 0.04);
+    --card-shadow-hover:
+        0 4px 16px oklch(0 0 0 / 0.08), 0 2px 4px oklch(0 0 0 / 0.04);
+    --chart-1: oklch(0.55 0.18 255);
+    --chart-2: oklch(0.5 0.18 150);
+    --chart-3: oklch(0.55 0.15 55);
+    --chart-4: oklch(0.42 0.08 178);
+    --chart-5: oklch(0.5 0.16 25);
+    --sidebar: oklch(0.98 0.003 100);
+    --sidebar-foreground: oklch(0.18 0.02 260);
+    --sidebar-primary: oklch(0.5 0.18 150);
+    --sidebar-primary-foreground: oklch(0.99 0 0);
+    --sidebar-accent: oklch(0.93 0.03 150);
+    --sidebar-accent-foreground: oklch(0.15 0.03 180);
+    --sidebar-border: oklch(0.9 0.008 150);
+    --sidebar-ring: oklch(0.5 0.18 150 / 0.4);
+
+    /* OtoParking legacy tokens — light mode */
+    --bg-page: oklch(0.98 0.003 100);
+    --bg-card: oklch(1 0 0);
+    --bg-glass: oklch(1 0 0 / 0.85);
+    --header-bg: oklch(0.995 0.001 100);
+    --brand-teal: oklch(0.38 0.08 178);
+    --accent-primary: oklch(0.5 0.18 150);
+    --success: oklch(0.5 0.15 155);
+    --danger: oklch(0.52 0.2 25);
+    --escrow-pending: oklch(0.52 0.14 55);
+    --text-primary: oklch(0.18 0.02 260);
+    --text-muted: oklch(0.5 0.02 200);
+    --border-default: oklch(0.88 0.012 150 / 0.6);
+    --border-active: oklch(0.5 0.18 150 / 0.5);
+    --border-subtle: oklch(0.88 0.012 150 / 0.35);
+    --hover-bg: oklch(0.93 0.02 150 / 0.7);
+    --hover-bg-light: oklch(0.93 0.02 150 / 0.4);
+    --flow-line-base: oklch(0.5 0.18 150 / 0.22);
+    --flow-line-active: oklch(0.5 0.18 150 / 0.85);
+    --scrollbar-thumb: oklch(0.5 0.18 150 / 0.2);
+    --scrollbar-thumb-hover: oklch(0.5 0.18 150 / 0.4);
+    --wallet-driver: oklch(0.53 0.16 252);
+    --wallet-commission: oklch(0.5 0.18 150);
+    --wallet-escrow: oklch(0.52 0.14 55);
+    --wallet-lot: oklch(0.38 0.08 178);
+    --wallet-cash: oklch(0.5 0.15 155);
+    --log-old: oklch(0.5 0.02 200 / 0.5);
+    --toggle-bg: oklch(0.93 0.02 150 / 0.7);
+    --toggle-border: oklch(0.5 0.18 150 / 0.35);
+
+    /* Edge info panel — light mode */
+    --edge-info-bg: oklch(1 0 0 / 0.94);
+    --edge-info-border: oklch(0.5 0.18 150 / 0.25);
+    --edge-info-text: oklch(0.18 0.02 260);
+    --edge-info-muted: oklch(0.5 0.02 200);
+    --edge-label-active-bg: #1a7a3a;
+    --edge-label-active-text: #ffffff;
+    --edge-accent: #1a7a3a;
+    --edge-accent-alpha: rgba(26, 122, 58, 0.1);
+    --reactflow-bg-dots: rgba(26, 122, 58, 0.06);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-background text-foreground;
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        min-height: 100vh;
+        overflow: hidden;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 1.6;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CUSTOM OTOPARKING COMPONENTS (FlowCanvas, Wallet Nodes, Particles)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Wallet Node — base geometry handled inline in WalletNodeContent.tsx */
+/* Only ring and delta badge need CSS (they use absolute positioning) */
+.wallet-node {
+    position: relative;
+}
+
+.wallet-node.active {
+    /* active state handled via inline styles in WalletNodeContent */
+}
+
+/* wallet-node-amount and wallet-node-label are now inline in WalletNodeContent.tsx */
+
+.wallet-node-delta {
+    position: absolute;
+    top: -28px;
+    right: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background: var(--card);
+    border: 0.5px solid var(--border);
+    white-space: nowrap;
+}
+
+.wallet-node-ring {
+    position: absolute;
+    inset: -6px;
+    border-radius: var(--radius-2xl);
+    border: 1.5px solid var(--accent-primary);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Slow down React Flow animated edge dash so it reads as a deliberate flow */
+.react-flow__edge.animated .react-flow__edge-path {
+    animation-duration: 1.4s !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   REACT FLOW THEME OVERRIDES — forces canvas colors to respect light/dark
+   Uses !important to beat the inline styles set by FlowCanvas JSX.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ReactFlow internal CSS variables (set by colorMode prop) */
+.react-flow {
+    --xy-node-background-color: var(--card) !important;
+    --xy-node-border: 1px solid var(--border) !important;
+    --xy-node-color: var(--foreground) !important;
+    --xy-handle-background-color: var(--muted-foreground) !important;
+    --xy-selection-background-color: oklch(
+        from var(--accent-primary) l c h / 0.12
+    ) !important;
+    --xy-selection-border: 1px solid var(--accent-primary) !important;
+    --xy-connection-line-stroke: var(--edge-accent, #cbff00) !important;
+    --xy-edge-stroke: var(--edge-accent, #cbff00) !important;
+    --xy-edge-stroke-width: 1 !important;
+    --xy-background-color: var(--background) !important;
+    --xy-background-pattern-color: var(
+        --reactflow-bg-dots,
+        rgba(203, 255, 0, 0.06)
+    ) !important;
+}
+
+/* Force ReactFlow pane/viewport background */
+.react-flow__pane,
+.react-flow__viewport,
+.react-flow__renderer {
+    background: var(--background) !important;
+}
+
+/* Override ReactFlow's .dark class when page is in light mode */
+html.light .react-flow.dark {
+    --xy-background-color: var(--background) !important;
+    --xy-background-pattern-color: var(
+        --reactflow-bg-dots,
+        rgba(203, 255, 0, 0.06)
+    ) !important;
+    background: var(--background) !important;
+}
+
+html.light .react-flow__background {
+    --xy-background-pattern-color-props: var(
+        --reactflow-bg-dots,
+        rgba(122, 153, 0, 0.08)
+    ) !important;
+}
+
+/* Edge stroke */
+.react-flow__edge-path {
+    stroke: var(--edge-accent, #cbff00) !important;
+}
+
+/* Edge arrowhead marker */
+.react-flow__arrowhead polyline,
+.react-flow__arrowhead path {
+    stroke: var(--edge-accent, #cbff00) !important;
+    fill: var(--edge-accent, #cbff00) !important;
+}
+
+/* Background dot grid */
+.react-flow__background circle,
+.react-flow__background path,
+.react-flow__background rect {
+    fill: var(--reactflow-bg-dots, rgba(203, 255, 0, 0.06)) !important;
+    stroke: var(--reactflow-bg-dots, rgba(203, 255, 0, 0.06)) !important;
+}
+
+/* Controls panel background */
+.react-flow__controls {
+    background: var(--card) !important;
+    border-color: var(--border) !important;
+}
+.react-flow__controls-button {
+    background: var(--card) !important;
+    border-color: var(--border) !important;
+    color: var(--foreground) !important;
+    fill: var(--foreground) !important;
+}
+.react-flow__controls-button:hover {
+    background: var(--accent) !important;
+}
+.react-flow__controls-button svg {
+    fill: var(--foreground) !important;
+}
+
+/* Minimap (if enabled) */
+.react-flow__minimap {
+    background: var(--card) !important;
+}
+
+/* Node selection box */
+.react-flow__nodesselection-rect {
+    background: oklch(from var(--accent-primary) l c h / 0.08) !important;
+    border-color: var(--accent-primary) !important;
+}
+
+/* Edge label text (step numbers on edges) */
+.react-flow__edgelabel-renderer text {
+    fill: var(--edge-accent, #cbff00) !important;
+}
+
+/* Edge label background rects */
+.react-flow__edgelabel-renderer rect {
+    fill: var(--edge-label-active-bg, #cbff00) !important;
+    stroke: none !important;
+}
+
+/* ReactFlow attribution */
+.react-flow__attribution {
+    background: var(--card) !important;
+    color: var(--muted-foreground) !important;
+}
+
+/* Edge animated dash offset — deliberate river-like flow at 1.8s/step pace */
+.react-flow__edge.animated .react-flow__edge-path {
+    animation-duration: 1.4s !important;
+    stroke: var(--edge-accent, #cbff00) !important;
+}
+
+/* SVG Flow Lines */
+.flow-line-base {
+    stroke: var(--flow-line-base);
+    stroke-dasharray: 4 6;
+    stroke-width: 1.5;
+    fill: none;
+    transition:
+        stroke 400ms ease,
+        stroke-width 400ms ease;
+}
+
+.flow-line-active {
+    stroke: var(--flow-line-active);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 6px oklch(from var(--accent-primary) l c h / 0.4));
+}
+
+/* Flow line arrowhead */
+.flow-arrow {
+    fill: var(--flow-line-active);
+    transition: fill 400ms ease;
+}
+
+/* Particle canvas overlay */
+.particle-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Live badge pulse */
+.live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    animation: livePulse 2s ease-in-out infinite;
+}
+
+/* Scenario category chip */
+.scenario-chip {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted-foreground);
+    margin-right: 6px;
+}
+
+/* Event log rows */
+.log-row {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 4px 0;
+    border-bottom: 0.5px solid var(--border-subtle);
+}
+
+.log-row:last-child {
+    border-bottom: none;
+}
+
+.log-row:first-of-type {
+    color: var(--accent-primary);
+}
+
+.log-row:not(:first-of-type) {
+    color: var(--log-old);
+}
+
+/* Custom scrollbar for legacy elements */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TOGGLE — Pill switch
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    padding: 3px;
+    border-radius: 9999px;
+    background: var(--toggle-bg);
+    border: 1px solid var(--toggle-border);
+    backdrop-filter: blur(8px);
+}
+
+.theme-toggle-option {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 26px;
+    border-radius: 9999px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    transition:
+        background 200ms ease,
+        box-shadow 200ms ease,
+        transform 150ms ease;
+    opacity: 0.5;
+}
+
+.theme-toggle-option:hover {
+    opacity: 0.8;
+}
+
+.theme-toggle-option.active {
+    background: var(--card);
+    box-shadow:
+        0 1px 3px oklch(0 0 0 / 0.12),
+        0 0 0 1px oklch(from var(--accent-primary) l c h / 0.12);
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT MODE VISUAL ENHANCEMENTS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html.light body {
+    background:
+        radial-gradient(
+            ellipse 80% 60% at 50% -20%,
+            oklch(0.5 0.18 150 / 0.04),
+            transparent
+        ),
+        radial-gradient(
+            ellipse 60% 50% at 80% 80%,
+            oklch(0.55 0.16 255 / 0.03),
+            transparent
+        ),
+        var(--background);
+}
+
+/* Shadcn cards — subtle lift on hover */
+html.light [data-slot="card"] {
+    box-shadow: var(--card-shadow);
+    transition:
+        box-shadow 200ms ease,
+        transform 200ms ease;
+}
+
+html.light [data-slot="card"]:hover {
+    box-shadow: var(--card-shadow-hover);
+    transform: translateY(-1px);
+}
+
+/* Wallet nodes — softer active glow in light mode */
+html.light .wallet-node.active {
+    box-shadow:
+        0 0 0 2px oklch(from var(--accent-primary) l c h / 0.2),
+        0 0 40px 6px oklch(from var(--accent-primary) l c h / 0.15),
+        0 4px 20px oklch(0 0 0 / 0.08);
+}
+
+/* Metric cards — left accent stripe */
+html.light [data-slot="card"][data-size="sm"] {
+    border-left: 3px solid var(--accent-primary);
+    padding-left: calc(var(--spacing, 0.25rem) * 3 - 3px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOTION ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@media (prefers-reduced-motion: no-preference) {
+    @keyframes livePulse {
+        0%,
+        100% {
+            opacity: 1;
+            transform: scale(1);
+        }
+        50% {
+            opacity: 0.35;
+            transform: scale(0.65);
+        }
+    }
+
+    @keyframes countUp {
+        from {
+            opacity: 0.4;
+        }
+        to {
+            opacity: 1;
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wallet-node-ring,
+    .live-dot {
+        animation: none;
+    }
 }
