@@ -114,42 +114,51 @@ export const SCENARIOS: PRDScenario[] = [
         id: "gw1",
         from: "driver",
         to: "commission",
-        amount: 2,
+        amount: 0.5,
         label: "10% comm",
         stepDescription:
-          "10% platform commission (2 MAD) deducted at the exit gate and credited to Commission available balance instantly.",
+          "Platform commission (10% of fare) deducted at the exit gate and credited to Commission available balance instantly.",
       },
       {
         id: "gw2",
         from: "driver",
         to: "lot",
-        amount: 18,
+        amount: 4.5,
         label: "90% revenue",
         stepDescription:
-          "90% revenue share (18 MAD) goes directly to Lot Revenue. Gate sessions bypass escrow entirely — there is no pre-booking to protect, so funds settle immediately to the merchant.",
+          "Revenue share (90% of fare) goes directly to Lot Revenue. Gate sessions bypass escrow entirely — there is no pre-booking to protect, so funds settle immediately to the merchant.",
       },
     ],
   },
 
-  /* ── §7.4 Gate Session — Cash ────────────────────────────────────── */
+  /* ── §7.4 Gate Session — Cash ────────────────────────────────────────── */
   {
     id: "gate-cash",
     number: 5,
     category: "gate",
     name: "Gate Exit — Cash",
     description:
-      "Physical cash at gate → lot revenue + cash commission tracker",
+      "Agent closes cash session at gate: tally incremented, commission tracked. Agent→Manager and Manager→Lot are button-triggered.",
     prdSection: "§7.4",
     concurrent: true,
     flows: [
       {
         id: "gc1",
-        from: "lot",
-        to: "lot",
-        amount: 50,
+        from: "agent-cash",
+        to: "agent-cash",
+        amount: 5,
         label: "Cash collected",
         stepDescription:
-          "Driver pays 50 MAD in physical cash at the exit gate. The full amount is recorded as Lot Revenue. No digital wallet is debited — cash is handled by the agent at the lot.",
+          "Driver pays cash at the exit gate. No digital wallet is debited. The agent's daily tally (oto_agent_cash_tally) is incremented by the computed fare — the cash is physically in the agent's hands.",
+      },
+      {
+        id: "gc2",
+        from: "cash-tracker",
+        to: "cash-tracker",
+        amount: 0.5,
+        label: "10% commission tracked",
+        stepDescription:
+          "Commission (10% of fare) is recorded in oto_cash_commission_tracker for month-end netting. It is NOT paid digitally now — it will be deducted from the lot's wire transfer at settlement (PRD §8.2).",
       },
     ],
   },

@@ -16,17 +16,21 @@ export interface TestSettings {
   autoReleaseEscrow: boolean;
   overstayMinutes: number;
   commissionRate: number; // 0–1, e.g. 0.1 = 10% (per-lot rate from CommissionRateService)
+  gracePeriodMinutes: number; // lot 61 grace period (0 = no free window)
+  hourlyRate: number; // MAD/hr for lot 61 tariff
 }
 
 const DEFAULTS: TestSettings = {
   topUpAmount: 20,
-  gateCashFare: 50,
-  gateCashCommission: 5,
+  gateCashFare: 5,
+  gateCashCommission: 0.5,
   bookingDurationHours: 2,
   bookingStartHour: 14,
   autoReleaseEscrow: true,
   overstayMinutes: 90,
   commissionRate: 0.1,
+  gracePeriodMinutes: 0,
+  hourlyRate: 5,
 };
 
 const STORAGE_KEY = "otoparking-test-settings";
@@ -199,32 +203,6 @@ export default function SettingsPanel({
                   }
                 />
                 <Field
-                  label="Cash Fare"
-                  unit="MAD"
-                  value={settings.gateCashFare}
-                  min={1}
-                  max={500}
-                  step={5}
-                  onChange={(v) =>
-                    onChange({
-                      ...settings,
-                      gateCashFare: v,
-                      gateCashCommission: Math.round(v * 0.1 * 100) / 100,
-                    })
-                  }
-                />
-                <Field
-                  label="Commission"
-                  unit="MAD"
-                  value={settings.gateCashCommission}
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  onChange={(v) =>
-                    onChange({ ...settings, gateCashCommission: v })
-                  }
-                />
-                <Field
                   label="Overstay"
                   unit="min"
                   value={settings.overstayMinutes}
@@ -284,12 +262,15 @@ export default function SettingsPanel({
                     max={30}
                     step={1}
                     value={Math.round(settings.commissionRate * 100)}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const rate = Number(e.target.value) / 100;
                       onChange({
                         ...settings,
-                        commissionRate: Number(e.target.value) / 100,
-                      })
-                    }
+                        commissionRate: rate,
+                        gateCashCommission:
+                          Math.round(settings.gateCashFare * rate * 100) / 100,
+                      });
+                    }}
                     style={{ width: "100%", accentColor: T.accent }}
                   />
                 </div>
@@ -324,6 +305,152 @@ export default function SettingsPanel({
                       onChange({ ...settings, autoReleaseEscrow: v })
                     }
                   />
+                </div>
+
+                {/* ── Lot 61 Tariff ──────────────────────────────────── */}
+                <div
+                  style={{
+                    gridColumn: "1 / -1",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    background: T.card,
+                    border: `1px solid ${T.accent}30`,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: 8.5,
+                      color: T.accent,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Lot 61 Tariff
+                  </span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      <span style={{ fontSize: 8, color: T.textMuted }}>
+                        Grace {settings.gracePeriodMinutes} min
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={30}
+                        step={1}
+                        value={settings.gracePeriodMinutes}
+                        onChange={(e) =>
+                          onChange({
+                            ...settings,
+                            gracePeriodMinutes: Number(e.target.value),
+                          })
+                        }
+                        style={{ width: "100%", accentColor: T.accent }}
+                      />
+                    </div>
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 2,
+                      }}
+                    >
+                      <span style={{ fontSize: 8, color: T.textMuted }}>
+                        Rate {settings.hourlyRate} MAD/hr
+                      </span>
+                      <input
+                        type="range"
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={settings.hourlyRate}
+                        onChange={(e) =>
+                          onChange({
+                            ...settings,
+                            hourlyRate: Number(e.target.value),
+                          })
+                        }
+                        style={{ width: "100%", accentColor: T.accent }}
+                      />
+                    </div>
+                  </div>
+                  {/* Live fare preview */}
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      padding: "4px 6px",
+                      borderRadius: 4,
+                      background: T.bg,
+                      fontFamily: "monospace",
+                      fontSize: 9,
+                    }}
+                  >
+                    <span style={{ color: T.textDim }}>Gate fare (1h min)</span>
+                    <span style={{ fontWeight: 700, color: T.text }}>
+                      {settings.hourlyRate.toFixed(2)} MAD
+                    </span>
+                    <span style={{ color: T.textDim }}>→</span>
+                    <span style={{ color: "#CBFF00" }}>
+                      {(settings.hourlyRate * settings.commissionRate).toFixed(
+                        2,
+                      )}{" "}
+                      comm
+                    </span>
+                    <span style={{ color: T.textDim }}>+</span>
+                    <span style={{ color: "#005249" }}>
+                      {(
+                        settings.hourlyRate *
+                        (1 - settings.commissionRate)
+                      ).toFixed(2)}{" "}
+                      lot
+                    </span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { updateLot61Tariff } =
+                          await import("@/lib/tariff-sync");
+                        await updateLot61Tariff(
+                          settings.gracePeriodMinutes,
+                          settings.hourlyRate,
+                          settings.commissionRate,
+                        );
+                        alert(
+                          `Lot 61 synced:\n` +
+                            `• Grace: ${settings.gracePeriodMinutes} min\n` +
+                            `• Rate: ${settings.hourlyRate} MAD/hr\n` +
+                            `• Commission: ${Math.round(settings.commissionRate * 100)}%`,
+                        );
+                      } catch (e) {
+                        alert("Sync failed: " + String(e));
+                      }
+                    }}
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: 9,
+                      fontWeight: 700,
+                      padding: "5px 10px",
+                      borderRadius: 6,
+                      background: T.accent,
+                      color: T.bg,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Sync to DB
+                  </button>
                 </div>
               </div>
             </div>

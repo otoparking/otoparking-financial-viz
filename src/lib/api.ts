@@ -5,6 +5,7 @@ import {
   loginAdmin,
   loginTenant,
   loginDriver,
+  loginAgent,
   type AuthRole,
 } from "@/lib/auth-service";
 
@@ -29,6 +30,8 @@ const TENANT_EMAIL = "test-tenant@otoparking.com";
 const TENANT_PASSWORD = "Test-Tenant2026";
 const ADMIN_EMAIL = "admin@otoparking.com";
 const ADMIN_PASSWORD = "Admin@12345";
+const AGENT_EMAIL = "test-agent@otoparking.com";
+const AGENT_PASSWORD = "54ea7aa5c314";
 
 /* ── Test data ─────────────────────────────────────────────────────── */
 const PARKING_ID = 61;
@@ -75,6 +78,16 @@ async function getAdminToken(): Promise<string | null> {
   return token;
 }
 
+async function getAgentToken(): Promise<string | null> {
+  let token = await getToken("agent");
+  if (!token) {
+    const result = await loginAgent(AGENT_EMAIL, AGENT_PASSWORD);
+    if (result.success && result.token) return result.token;
+    return null;
+  }
+  return token;
+}
+
 /* ── Types ─────────────────────────────────────────────────────────── */
 
 export interface LiveDriverData {
@@ -92,6 +105,9 @@ export interface LiveTenantData {
   escrowCount: number;
   cashCommissionOwed: number;
   cashInAgentsHands: number;
+  activeTickets: number;
+  agentsOnShift: number;
+  pendingReconciliations: number;
 }
 
 export interface LiveData {
@@ -189,6 +205,9 @@ async function fetchTenantDashboard(): Promise<{
   escrowCount: number;
   cashCommissionOwed: number;
   cashInAgentsHands: number;
+  activeTickets: number;
+  agentsOnShift: number;
+  pendingReconciliations: number;
 } | null> {
   const token = await getTenantToken();
   if (!token) return null;
@@ -204,6 +223,11 @@ async function fetchTenantDashboard(): Promise<{
     escrowCount: (escrow?.count as number) ?? 0,
     cashCommissionOwed: (d.cashCommissionOutstanding as number) ?? 0,
     cashInAgentsHands: (liveOps?.cashInAgentsHands as number) ?? 0,
+    activeTickets: (liveOps?.activeTickets as number) ?? 0,
+    agentsOnShift: Array.isArray(liveOps?.agentsOnShift)
+      ? liveOps!.agentsOnShift.length
+      : 0,
+    pendingReconciliations: (liveOps?.pendingReconciliations as number) ?? 0,
   };
 }
 
@@ -237,12 +261,82 @@ export async function fetchLiveData(): Promise<LiveData> {
         escrowCount: dashboard?.escrowCount ?? 0,
         cashCommissionOwed: dashboard?.cashCommissionOwed ?? 0,
         cashInAgentsHands: dashboard?.cashInAgentsHands ?? 0,
+        activeTickets: dashboard?.activeTickets ?? 0,
+        agentsOnShift: dashboard?.agentsOnShift ?? 0,
+        pendingReconciliations: dashboard?.pendingReconciliations ?? 0,
       }
     : null;
   return {
     driver,
     tenant,
     connected: driver !== null && tenant !== null,
+  };
+}
+
+/* ── Cash flow state (agent + manager nodes) ──────────────────────── */
+
+export async function fetchCashFlowState(): Promise<{
+  agentCash: number;
+  managerCash: number;
+}> {
+  try {
+    const token = await getAdminToken();
+    const res = await fetch(
+      `${ADMIN_API}/financial/cash-flow?lotId=${PARKING_ID}`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      },
+    );
+    const json = await res.json();
+    const data = json.data ?? json;
+    return {
+      agentCash: parseFloat(data.agentCash ?? 0),
+      managerCash: parseFloat(data.managerCash ?? 0),
+    };
+  } catch {
+    return { agentCash: 0, managerCash: 0 };
+  }
+}
+
+export async function releaseAgentToManager(): Promise<ScenarioResult> {
+  const token = await getAdminToken();
+  if (!token) return { success: false, message: "Auth failed" };
+  const res = await fetch(
+    `${ADMIN_API}/financial/cash-flow/release-to-manager`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ lotId: PARKING_ID }),
+    },
+  );
+  const json = await res.json();
+  return {
+    success: res.ok && (json.success ?? true),
+    message: json.message ?? json.data?.message ?? "Unknown",
+  };
+}
+
+export async function releaseManagerToTenant(): Promise<ScenarioResult> {
+  const token = await getAdminToken();
+  if (!token) return { success: false, message: "Auth failed" };
+  const res = await fetch(
+    `${ADMIN_API}/financial/cash-flow/release-to-tenant`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ lotId: PARKING_ID }),
+    },
+  );
+  const json = await res.json();
+  return {
+    success: res.ok && (json.success ?? true),
+    message: json.message ?? json.data?.message ?? "Unknown",
   };
 }
 
@@ -742,10 +836,64 @@ export async function executeGateWalkIn(): Promise<ScenarioResult> {
 }
 
 /**
- * Credits lot revenue + records cash commission via admin adjust.
- * @param fare - gate cash fare in MAD
- * @param commission - cash commission in MAD
+ * Realistic Gate Cash flow: driver walk-in → agent collects cash → tally updates.
+ * Uses the agent's JWT for the cash close. The backend handles fare computation,
+ * commission tracking, and agent tally updates atomically.
  */
+export async function executeGateCashAgent(): Promise<ScenarioResult> {
+  const driverToken = await getDriverToken();
+  if (!driverToken) return { success: false, message: "Driver auth failed" };
+  const agentToken = await getAgentToken();
+  if (!agentToken) return { success: false, message: "Agent auth failed" };
+
+  // Step 1: Driver starts walk-in session
+  const { data: startD } = await postWithAuth(
+    `${MAIN_API}/gate/sessions/start`,
+    driverToken,
+    {
+      lotId: PARKING_ID,
+      vehicleId: VEHICLE_ID,
+      sessionType: "WALK_IN",
+      laneId: "TEST-LANE-01",
+    },
+  );
+  const inner = ((startD as Record<string, unknown>)?.data ?? startD) as Record<
+    string,
+    unknown
+  >;
+  const sessionToken = inner?.sessionToken as string | undefined;
+  if (!sessionToken)
+    return {
+      success: false,
+      message: `Walk-in start failed: ${((startD as Record<string, unknown>)?.message as string) ?? "Unknown"}`,
+    };
+
+  // Step 2: Agent closes the session as CASH
+  const cashRes = await fetch(`${MAIN_API}/gate/payment/close/cash`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${agentToken}`,
+    },
+    body: JSON.stringify({ sessionToken, parkingId: PARKING_ID }),
+  });
+  const cashJson = await cashRes.json();
+  const cashData = (cashJson.data ?? cashJson) as Record<string, unknown>;
+  const fare = (cashData?.fare as number) ?? 0;
+
+  if (!cashRes.ok) {
+    return {
+      success: false,
+      message: `Cash close failed: ${(cashJson?.message as string) ?? "Unknown"}`,
+    };
+  }
+
+  // Step 3: Return the real backend result
+  return {
+    success: true,
+    message: `Agent collected ${fare} MAD cash · Tally +${fare} · Commission tracked`,
+  };
+}
 export async function executeGateCash(
   fare: number = 50,
   commission: number = 5,
@@ -817,6 +965,94 @@ export async function fetchCashLedger(): Promise<{
   };
 }
 
+// ── Month-End Settlement ────────────────────────────────────────────────
+
+/**
+ * Executes the full digital payout flow (PRD §8.1).
+ * Tenant requests a settlement → Super Admin auto-approves → payout executed.
+ * Uses the real admin backend settlement pipeline.
+ */
+export async function executeSettleDigital(): Promise<ScenarioResult> {
+  try {
+    // Step 1: Get tenant token
+    const tenantToken = await getTenantToken();
+    if (!tenantToken) return { success: false, message: "Tenant auth failed" };
+
+    // Step 2: Tenant requests settlement
+    const reqRes = await fetch(`${ADMIN_API}/tenant/financial/settlements`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tenantToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        bankDetails: "VIZ-DEV",
+        tenantNote: "VIZ month-end digital payout",
+      }),
+    });
+    const reqJson = await reqRes.json();
+    if (!reqRes.ok) {
+      return {
+        success: false,
+        message: reqJson.message ?? "Settlement request failed",
+      };
+    }
+    const settlementId = reqJson.data?.id;
+    if (!settlementId) {
+      return { success: false, message: "No settlement ID in response" };
+    }
+
+    // Step 3: Super admin approves the settlement (triggers payout)
+    const adminToken = await getAdminToken();
+    if (!adminToken) return { success: false, message: "Admin auth failed" };
+
+    const approveRes = await fetch(
+      `${ADMIN_API}/financial/settlements/${settlementId}/approve`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reviewNote: "VIZ auto-approved" }),
+      },
+    );
+    const approveJson = await approveRes.json();
+    return {
+      success: approveRes.ok,
+      message:
+        approveJson.message ??
+        (approveRes.ok
+          ? "Settlement approved and payout executed"
+          : "Approval failed"),
+    };
+  } catch (e) {
+    return { success: false, message: String(e) };
+  }
+}
+
+/**
+ * Executes cash commission netting (PRD §8.2).
+ * Marks commission_collected = commission_owed for the current billing period.
+ *
+ * Note: The new settlement approval endpoint also handles cash netting as part
+ * of the digital payout. This standalone function remains for testing §8.2 in
+ * isolation and still uses the dev-only direct-DB route until a standalone
+ * backend endpoint is added.
+ */
+export async function executeSettleCash(): Promise<ScenarioResult> {
+  try {
+    const res = await fetch("/api/settlement/cash", { method: "POST" });
+    const json = await res.json();
+    return {
+      success: json.success ?? res.ok,
+      message: json.message ?? "Unknown",
+    };
+  } catch (e) {
+    return { success: false, message: String(e) };
+  }
+}
+
 /**
  * Fetch the most recent CONFIRMED or ACTIVE booking for the test driver.
  */
@@ -843,7 +1079,9 @@ export async function fetchLatestBooking(): Promise<string | null> {
 /**
  * Checks if the test driver has an ACTIVE booking (escrow not yet released).
  */
-export async function checkActiveBooking(): Promise<{
+export async function checkActiveBooking(
+  commissionRate: number = 0.1,
+): Promise<{
   hasActive: boolean;
   bookingRef: string | null;
   escrowAmount: number;
@@ -888,7 +1126,10 @@ export async function checkActiveBooking(): Promise<{
     return {
       hasActive: true,
       bookingRef: (activeBooking.booking_reference as string) ?? null,
-      escrowAmount: ((activeBooking.amount as number) ?? 0) * 0.9,
+      escrowAmount:
+        Math.round(
+          ((activeBooking.amount as number) ?? 0) * (1 - commissionRate) * 100,
+        ) / 100,
     };
   }
 

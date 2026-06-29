@@ -3,7 +3,9 @@ export type WalletType =
   | "commission"
   | "settlement"
   | "lot"
-  | "cash-tracker";
+  | "cash-tracker"
+  | "agent-cash"
+  | "manager-cash";
 
 export interface WalletState {
   id: WalletType;
@@ -92,12 +94,11 @@ export interface ParticleDataV2 {
 }
 
 export type MetricKey =
-  | "circulation"
-  | "commission"
-  | "escrow"
-  | "lotRevenue"
-  | "cashCommission"
-  | "agentTally";
+  | "activeTickets"
+  | "agentsOnShift"
+  | "cashInHands"
+  | "pendingSettlements"
+  | "cashOwed";
 
 export interface MetricCard {
   key: MetricKey;

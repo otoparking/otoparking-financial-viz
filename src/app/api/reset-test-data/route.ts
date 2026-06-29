@@ -30,6 +30,13 @@ export async function POST() {
     );
     results.push(`${cashCleared.rowCount} cash tracker rows cleared`);
 
+    // 1c. Delete cash session commission audit BEFORE gate sessions (FK constraint)
+    const commAudit = await client.query(
+      `DELETE FROM oto_cash_session_commissions WHERE lot_id = $1`,
+      [PARKING_ID],
+    );
+    results.push(`${commAudit.rowCount} cash commission audit records deleted`);
+
     // 2. End active gate access requests (the actual table for active sessions)
     const closedAccess = await client.query(
       `UPDATE oto_parking_gate_access_requests
@@ -142,6 +149,37 @@ export async function POST() {
       [PARKING_ID],
     );
     results.push(`${ledgerDeleted.rowCount} ledger entries deleted`);
+
+    // 12. Close agent cash tally for lot 61 (mark as COMPLETED, reset counters)
+    const tallyClosed = await client.query(
+      `UPDATE oto_agent_cash_tally
+       SET total_collected = 0, session_count = 0, status = 'RECONCILED',
+           confirmed_amount = 0, discrepancy_amount = 0, updated_at = NOW()
+       WHERE lot_id = $1 AND status IN ('OPEN', 'AWAITING_FLOAT')`,
+      [PARKING_ID],
+    );
+    results.push(`${tallyClosed.rowCount} agent tallies closed`);
+
+    // 13. Clear agent active lot for lot 61 guardians
+    const guardianCleared = await client.query(
+      `UPDATE oto_parking_guardian
+       SET active_parking_id = NULL, active_parking_date = NULL, date_update = NOW()
+       WHERE id IN (
+         SELECT guardian_id FROM oto_agent_schedule
+         WHERE parking_id = $1 AND scheduled_date = CURRENT_DATE
+       )`,
+      [PARKING_ID],
+    );
+    results.push(`${guardianCleared.rowCount} guardian active lots cleared`);
+
+    // 14. Complete today's agent schedules for lot 61
+    const schedulesClosed = await client.query(
+      `UPDATE oto_agent_schedule
+       SET status = 'COMPLETED', updated_at = NOW()
+       WHERE parking_id = $1 AND scheduled_date = CURRENT_DATE AND status = 'SCHEDULED'`,
+      [PARKING_ID],
+    );
+    results.push(`${schedulesClosed.rowCount} agent schedules completed`);
 
     await client.query("COMMIT");
 

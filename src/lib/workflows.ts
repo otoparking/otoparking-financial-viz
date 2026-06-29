@@ -40,8 +40,8 @@ export const WORKFLOWS: Workflow[] = [
     id: "gate-cash-flow",
     name: "Gate Cash",
     description:
-      "Cash payment at gate → Revenue to lot → Commission tracked for month-end in cash tally",
-    steps: ["topup", "gate-cash"],
+      "Cash payment at gate → Agent tally incremented + commission tracked. Use Agent→Manager and Manager→Lot buttons to move cash up the chain.",
+    steps: ["gate-cash"],
     delayMs: 8000,
   },
   {

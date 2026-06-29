@@ -18,9 +18,12 @@ import {
   executeBooking,
   executeBookingCompleted,
   executeGateWalkIn,
+  executeGateCashAgent,
   executeGateCash,
   executeOverstay,
   executeCancel,
+  executeSettleDigital,
+  executeSettleCash,
   fetchLatestBooking,
 } from "@/lib/api";
 import type { TestSettings } from "@/components/SettingsPanel";
@@ -216,67 +219,52 @@ export async function handleGateWallet(): Promise<ScenarioResult> {
 // ── Gate Cash ─────────────────────────────────────────────────────────
 
 /**
- * Cash gate payment: credit lot revenue + record commission.
- * @param settings - test settings (gateCashFare, gateCashCommission)
- * @param emit - monitor event emitter
+ * Realistic Gate Cash: driver walk-in → agent collects cash.
+ * The agent closes the session as CASH via the gate payment endpoint.
+ * Agent tally + cash tracker update automatically server-side.
  */
 export async function handleGateCash(
-  settings: TestSettings,
+  _settings: TestSettings,
   emit: EmitFn,
 ): Promise<ScenarioResult> {
-  emit(
-    "api",
-    "POST /admin/financial/adjust",
-    `Credit lot ${settings.gateCashFare} MAD`,
-    "pending",
-    {
-      method: "POST",
-      endpoint: "/admin/financial/adjust",
-      fare: `${settings.gateCashFare} MAD`,
-      commission: `${settings.gateCashCommission} MAD`,
-      channel: "cash",
-    },
-  );
-  emit("db", "oto_cash_commission_tracker", "Upsert cash tracker", "pending", {
-    table: "oto_cash_commission_tracker",
-    operation: "UPSERT",
-    amount: `${settings.gateCashCommission} MAD`,
+  emit("api", "POST /gate/sessions/start", "Driver walk-in entry", "pending", {
+    method: "POST",
+    endpoint: "/gate/sessions/start",
+    sessionType: "WALK_IN",
+  });
+  emit("db", "oto_agent_cash_tally", "Agent will collect cash", "pending", {
+    table: "oto_agent_cash_tally",
+    operation: "UPDATE",
+    agent: "Test Agent",
   });
 
-  const result = await executeGateCash(
-    settings.gateCashFare,
-    settings.gateCashCommission,
-  );
+  const result = await executeGateCashAgent();
 
   emit(
     "api",
-    "POST /admin/financial/adjust",
+    "POST /gate/payment/close/cash",
     result.success
-      ? `Credited lot ${settings.gateCashFare} MAD`
+      ? `Agent closed session as CASH`
       : (result.message ?? "Failed"),
     result.success ? "ok" : "error",
     result.success
-      ? {
-          wallet: "lot",
-          credited: `${settings.gateCashFare} MAD`,
-          channel: "cash gate",
-        }
+      ? { channel: "agent-cash", agent: "Test Agent", operation: "cash close" }
       : { error: result.message ?? "unknown" },
   );
-  emit(
-    "db",
-    "oto_cash_commission_tracker",
-    result.success
-      ? `Cash tracker +${settings.gateCashCommission} MAD`
-      : "Rolled back",
-    result.success ? "ok" : "error",
-    result.success
-      ? {
-          table: "oto_cash_commission_tracker",
-          delta: `+${settings.gateCashCommission} MAD`,
-        }
-      : { table: "oto_cash_commission_tracker", operation: "ROLLBACK" },
-  );
+
+  if (result.success) {
+    emit("db", "oto_agent_cash_tally", "Agent tally updated", "ok", {
+      table: "oto_agent_cash_tally",
+      operation: "increment",
+      note: "Cash in agent's hands increased",
+    });
+    emit("db", "oto_cash_commission_tracker", "Cash commission tracked", "ok", {
+      table: "oto_cash_commission_tracker",
+      operation: "UPSERT",
+      note: "10% of fare owed to platform",
+    });
+  }
+
   return result;
 }
 
@@ -331,7 +319,7 @@ export async function handleOverstay(
   return result;
 }
 
-// ── Cancel ────────────────────────────────────────────────────────────
+// ── Cancel ──────────────────────────────────────────────────
 
 /**
  * Cancels a booking. Uses workflow's booking ref, falls back to fetchLatestBooking.
@@ -351,4 +339,62 @@ export async function handleCancel(
     success: false,
     message: "No booking found to cancel. Run a booking first.",
   };
+}
+
+// ── Month-End Settlement ──────────────────────────────────────────────
+
+/**
+ * Executes Month-End Digital Payout (PRD §8.1):
+ * Tenant requests settlement → SA auto-approves → merchant wallet zeroed.
+ */
+export async function handleSettleDigital(
+  emit: EmitFn,
+): Promise<ScenarioResult> {
+  emit(
+    "api",
+    "POST /tenant/financial/settlements → PUT /financial/settlements/{id}/approve",
+    "Requesting + auto-approving month-end digital payout",
+    "pending",
+    { flow: "settle-digital", section: "§8.1" },
+  );
+  const result = await executeSettleDigital();
+  emit(
+    "api",
+    "Settlement payout",
+    result.success ? result.message : (result.message ?? "Failed"),
+    result.success ? "ok" : "error",
+    result.success
+      ? { status: "APPROVED", walletOp: "merchant wallet debited" }
+      : { error: result.message },
+  );
+  return result;
+}
+
+/**
+ * Executes Month-End Cash Netting (PRD §8.2):
+ * Marks accumulated cash commissions as collected for the current period.
+ */
+export async function handleSettleCash(emit: EmitFn): Promise<ScenarioResult> {
+  emit(
+    "db",
+    "oto_cash_commission_tracker",
+    "Marking cash commission as collected for current billing period",
+    "pending",
+    {
+      table: "oto_cash_commission_tracker",
+      operation: "UPDATE commission_collected",
+      section: "§8.2",
+    },
+  );
+  const result = await executeSettleCash();
+  emit(
+    "db",
+    "oto_cash_commission_tracker",
+    result.success ? result.message : (result.message ?? "Failed"),
+    result.success ? "ok" : "error",
+    result.success
+      ? { operation: "commission_collected updated", status: "netted" }
+      : { error: result.message },
+  );
+  return result;
 }

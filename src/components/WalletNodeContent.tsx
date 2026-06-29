@@ -2,7 +2,15 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import NumberFlow from "@number-flow/react";
-import { User, Percent, Lock, Store, Receipt } from "lucide-react";
+import {
+  User,
+  Percent,
+  Lock,
+  Store,
+  Receipt,
+  Banknote,
+  UserCheck,
+} from "lucide-react";
 import { Handle, Position } from "@xyflow/react";
 import type { WalletState } from "@/types/financial";
 import { useTheme } from "@/hooks/useTheme";
@@ -43,6 +51,16 @@ const WALLET_META: Record<
     Icon: Receipt,
     role: "Cash Owed",
     description: "Agent cash commissions — netted at month-end",
+  },
+  "agent-cash": {
+    Icon: Banknote,
+    role: "In Hand",
+    description: "Physical cash held by agents during shift",
+  },
+  "manager-cash": {
+    Icon: UserCheck,
+    role: "Collected",
+    description: "Cash transferred from agents to manager",
   },
 };
 

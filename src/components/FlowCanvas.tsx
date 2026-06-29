@@ -155,6 +155,9 @@ const WALLET_NAMES: Record<string, string> = {
   commission: "Commission",
   settlement: "Settlement",
   lot: "Lot Revenue",
+  "cash-tracker": "Cash Tracker",
+  "agent-cash": "Agent Cash",
+  "manager-cash": "Manager Cash",
 };
 
 /**
@@ -228,6 +231,15 @@ const EDGES = [
     targetHandle: "l",
     curvature: 0.35,
   },
+  // Driver → Agent Cash (physical cash handoff at gate)
+  {
+    id: "e-driver-agent",
+    source: "driver",
+    target: "agent-cash",
+    sourceHandle: "r-out",
+    targetHandle: "t-in",
+    curvature: 0.35,
+  },
   // Driver → Cash Tracker (physical cash flow — dashed, gray)
   {
     id: "e-driver-cash",
@@ -245,6 +257,24 @@ const EDGES = [
     sourceHandle: "b-out",
     targetHandle: "r",
     curvature: 0.3,
+  },
+  // Agent Cash → Manager Cash (shift end release)
+  {
+    id: "e-agent-manager",
+    source: "agent-cash",
+    target: "manager-cash",
+    sourceHandle: "b-out",
+    targetHandle: "t-in",
+    curvature: 0.4,
+  },
+  // Manager Cash → Lot Revenue (end of day deposit)
+  {
+    id: "e-manager-lot",
+    source: "manager-cash",
+    target: "lot",
+    sourceHandle: "t-out",
+    targetHandle: "r",
+    curvature: 0.35,
   },
 ];
 

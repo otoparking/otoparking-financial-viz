@@ -55,6 +55,8 @@ interface ScenarioPanelProps {
   onReset: () => void;
   onHardReset: () => void;
   onReleaseEscrow: () => void;
+  onReleaseAgentToManager: () => void;
+  onReleaseManagerToTenant: () => void;
   log: LogEntry[];
 }
 
@@ -167,6 +169,8 @@ export default function ScenarioPanel({
   onReset,
   onHardReset,
   onReleaseEscrow,
+  onReleaseAgentToManager,
+  onReleaseManagerToTenant,
   log,
 }: ScenarioPanelProps) {
   const T = useTheme();
@@ -739,6 +743,134 @@ export default function ScenarioPanel({
                   </div>
                   <div style={{ fontSize: 9, color: T.textMuted }}>
                     Force-release all held escrow
+                  </div>
+                </div>
+              </div>
+            </motion.button>
+
+            {/* Release Agent → Manager */}
+            <motion.button
+              whileHover={{ x: 1 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={onReleaseAgentToManager}
+              style={{
+                display: "flex",
+                alignItems: "stretch",
+                gap: 0,
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 7,
+                overflow: "hidden",
+                cursor: "pointer",
+                textAlign: "left",
+                padding: 0,
+                width: "100%",
+              }}
+            >
+              <div style={{ width: 3, background: "#F59E0B", flexShrink: 0 }} />
+              <div
+                style={{
+                  padding: "10px 12px",
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: "#F59E0B18",
+                    border: "1px solid #F59E0B40",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    color: "#F59E0B",
+                  }}
+                >
+                  <ArrowRight size={13} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: T.text,
+                      marginBottom: 2,
+                    }}
+                  >
+                    Agent → Manager
+                  </div>
+                  <div style={{ fontSize: 9, color: T.textMuted }}>
+                    Release cash from agents to manager
+                  </div>
+                </div>
+              </div>
+            </motion.button>
+
+            {/* Release Manager → Tenant */}
+            <motion.button
+              whileHover={{ x: 1 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={onReleaseManagerToTenant}
+              style={{
+                display: "flex",
+                alignItems: "stretch",
+                gap: 0,
+                background: T.card,
+                border: `1px solid ${T.border}`,
+                borderRadius: 7,
+                overflow: "hidden",
+                cursor: "pointer",
+                textAlign: "left",
+                padding: 0,
+                width: "100%",
+              }}
+            >
+              <div style={{ width: 3, background: "#EC4899", flexShrink: 0 }} />
+              <div
+                style={{
+                  padding: "10px 12px",
+                  flex: 1,
+                  minWidth: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    background: "#EC489918",
+                    border: "1px solid #EC489940",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                    color: "#EC4899",
+                  }}
+                >
+                  <ArrowRight size={13} />
+                </div>
+                <div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: T.text,
+                      marginBottom: 2,
+                    }}
+                  >
+                    Manager → Lot
+                  </div>
+                  <div style={{ fontSize: 9, color: T.textMuted }}>
+                    Deposit cash to Lot Revenue
                   </div>
                 </div>
               </div>

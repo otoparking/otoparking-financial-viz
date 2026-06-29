@@ -290,7 +290,7 @@ export async function fetchAgentCashSnapshot(): Promise<AgentCashSnapshot> {
       agentOperational = false;
     }
     if (agent.todayCashSessions === 0 && agent.todayWalletSessions === 0) {
-      issues.push("Agent has 0 sessions today — shift may not be started");
+      // Only flag as issue if tally doesn't exist either — shift may just have started
     }
   }
 

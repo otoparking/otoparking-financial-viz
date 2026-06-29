@@ -32,6 +32,7 @@ const tokens: Record<string, TokenEntry | null> = {
   driver: null,
   tenant: null,
   admin: null,
+  agent: null,
 };
 
 // ── Generic auth helpers ───────────────────────────────────────────────
@@ -56,7 +57,7 @@ async function postJson(
 
 // ── Public API ─────────────────────────────────────────────────────────
 
-export type AuthRole = "driver" | "tenant" | "admin";
+export type AuthRole = "driver" | "tenant" | "admin" | "agent";
 
 /**
  * Returns a valid token for the given role, refreshing if expired.
@@ -96,6 +97,7 @@ export function clearTokens(): void {
   tokens.driver = null;
   tokens.tenant = null;
   tokens.admin = null;
+  tokens.agent = null;
 }
 
 /**
@@ -233,6 +235,32 @@ export async function loginTenant(
   const refreshToken = inner?.refreshToken as string | undefined;
   if (token) {
     setToken("tenant", token, 86400, refreshToken); // 24h
+  }
+  return { success: true, token };
+}
+
+/**
+ * Agent login — email + password via main API.
+ */
+export async function loginAgent(
+  email: string,
+  password: string,
+): Promise<{ success: boolean; token?: string; message?: string }> {
+  const { ok, data } = await postJson(`${MAIN_API}/auth/login`, {
+    email,
+    password,
+  });
+  if (!ok) {
+    return {
+      success: false,
+      message: (data.message as string) ?? "Agent login failed",
+    };
+  }
+  const inner = data.data as Record<string, unknown> | undefined;
+  const token = inner?.accessToken as string;
+  const refreshToken = inner?.refreshToken as string | undefined;
+  if (token) {
+    setToken("agent", token, 86400, refreshToken); // 24h
   }
   return { success: true, token };
 }

@@ -20,11 +20,17 @@ import {
   checkActiveBooking,
   fetchCashLedger,
   getDriverToken,
+  fetchCashFlowState,
+  releaseAgentToManager,
+  releaseManagerToTenant,
 } from "@/lib/api";
 import {
   bookingFlowAmount,
   cancelFlowAmount,
   overstayFlowAmount,
+  gateFlowAmount,
+  gateCashFlowAmount,
+  gateFareAmount,
 } from "@/lib/flow-amounts";
 import {
   handleTopup,
@@ -34,6 +40,8 @@ import {
   handleGateCash,
   handleOverstay,
   handleCancel,
+  handleSettleDigital,
+  handleSettleCash,
 } from "@/lib/scenario-handlers";
 import FlowCanvas from "@/components/FlowCanvas";
 import ScenarioPanel from "@/components/ScenarioPanel";
@@ -49,6 +57,7 @@ import AgentCashPanel from "@/components/AgentCashPanel";
 import { fetchCashTracker } from "@/lib/admin-api";
 import ApiDbMap from "@/components/ApiDbMap";
 import ApiDbFlowCanvas from "@/components/ApiDbFlowCanvas";
+import SimulationPanel from "@/components/SimulationPanel";
 
 /* ── Backend Wallet Architecture ───────────────────────────────────────
  *
@@ -127,25 +136,50 @@ const INITIAL_WALLETS: WalletState[] = [
     x: 160,
     y: 44,
   },
+  {
+    id: "agent-cash",
+    label: "Agent Cash",
+    subtitle: "Physical cash in agents' hands · oto_agent_cash_tally",
+    balance: 0,
+    blocked: 0,
+    previousBalance: 0,
+    previousBlocked: 0,
+    color: "#F59E0B",
+    kind: "ledger",
+    x: 160,
+    y: 84,
+  },
+  {
+    id: "manager-cash",
+    label: "Manager Cash",
+    subtitle: "Cash collected from agents · oto_test_manager_cash",
+    balance: 0,
+    blocked: 0,
+    previousBalance: 0,
+    previousBlocked: 0,
+    color: "#EC4899",
+    kind: "ledger",
+    x: 55,
+    y: 124,
+  },
 ];
 
 const INITIAL_METRICS: MetricCard[] = [
+  { key: "activeTickets", label: "Active Tickets", value: 0, color: "#3B82F6" },
   {
-    key: "circulation",
-    label: "Total Circulation",
+    key: "agentsOnShift",
+    label: "Agents on Shift",
     value: 0,
-    color: "#378ADD",
+    color: "#14B8A6",
   },
-  { key: "commission", label: "Commission Earned", value: 0, color: "#CBFF00" },
-  { key: "escrow", label: "Escrow Held", value: 0, color: "#BA7517" },
-  { key: "lotRevenue", label: "Lot Revenue", value: 0, color: "#005249" },
+  { key: "cashInHands", label: "Cash in Hands", value: 0, color: "#F59E0B" },
   {
-    key: "cashCommission",
-    label: "Cash Owed",
+    key: "pendingSettlements",
+    label: "Pending Settlements",
     value: 0,
-    color: "#A855F7",
-    subtitle: "oto_cash_commission_tracker",
+    color: "#EC4899",
   },
+  { key: "cashOwed", label: "Cash Owed", value: 0, color: "#A855F7" },
 ];
 
 function formatMAD(n: number): string {
@@ -188,11 +222,10 @@ export default function FinancialModule({
   }, [hoveredScenario]);
   const [metrics, setMetrics] = useState<MetricCard[]>(INITIAL_METRICS);
   const [ledger, setLedger] = useState<LedgerData>({
-    cashTally: 0,
+    cashCommission: 0,
     escrowActive: 0,
     escrowReleased: 0,
-    openDebts: 0,
-    cashCommission: 0,
+    cashInHands: 0,
   });
   const [liveData, setLiveData] = useState<LiveData | null>(null);
   const [lastSynced, setLastSynced] = useState<Date | null>(null);
@@ -238,7 +271,7 @@ export default function FinancialModule({
     [onMonitor],
   );
   const [rightPanel, setRightPanel] = useState<
-    "scenarios" | "monitor" | "agent-cash" | "api-db"
+    "scenarios" | "monitor" | "agent-cash" | "api-db" | "simulation"
   >("scenarios");
   const [canvasView, setCanvasView] = useState<"flow" | "api-map">("flow");
 
@@ -256,8 +289,14 @@ export default function FinancialModule({
       // Fetch cash commission tracker from admin backend
       const cashTracker = await fetchCashTracker().catch(() => null);
 
+      // Fetch agent + manager cash flow state
+      const cashFlow = await fetchCashFlowState().catch(() => ({
+        agentCash: 0,
+        managerCash: 0,
+      }));
+
       // Check for active booking
-      const ab = await checkActiveBooking();
+      const ab = await checkActiveBooking(settings.commissionRate);
       if (ab) {
         setActiveBooking(
           ab.hasActive
@@ -299,10 +338,29 @@ export default function FinancialModule({
               };
             }
             if (w.id === "cash-tracker" && cashTracker) {
+              const outstanding = Math.max(
+                0,
+                (cashTracker.commissionOwed ?? 0) -
+                  (cashTracker.commissionCollected ?? 0),
+              );
               return {
                 ...w,
                 previousBalance: w.balance,
-                balance: cashTracker.commissionOwed,
+                balance: outstanding,
+              };
+            }
+            if (w.id === "agent-cash") {
+              return {
+                ...w,
+                previousBalance: w.balance,
+                balance: cashFlow.agentCash,
+              };
+            }
+            if (w.id === "manager-cash") {
+              return {
+                ...w,
+                previousBalance: w.balance,
+                balance: cashFlow.managerCash,
               };
             }
             return w;
@@ -310,44 +368,42 @@ export default function FinancialModule({
         );
         setMetrics([
           {
-            key: "circulation",
-            label: "Total Circulation",
-            value: data.driver.balance,
-            color: "#378ADD",
+            key: "activeTickets",
+            label: "Active Tickets",
+            value: data.tenant?.activeTickets ?? 0,
+            color: "#3B82F6",
           },
           {
-            key: "commission",
-            label: "Commission Earned",
-            value: cashLedger?.lotCommission ?? 0,
-            color: "#CBFF00",
+            key: "agentsOnShift",
+            label: "Agents on Shift",
+            value: data.tenant?.agentsOnShift ?? 0,
+            color: "#14B8A6",
           },
           {
-            key: "escrow",
-            label: "Escrow Held",
-            value: data.tenant?.escrowTotal ?? 0,
-            color: "#BA7517",
+            key: "cashInHands",
+            label: "Cash in Hands",
+            value: data.tenant?.cashInAgentsHands ?? 0,
+            color: "#F59E0B",
           },
           {
-            key: "lotRevenue",
-            label: "Lot Revenue",
-            value: data.tenant?.merchantBalance ?? 0,
-            color: "#005249",
+            key: "pendingSettlements",
+            label: "Pending Settlements",
+            value: data.tenant?.pendingSettlements ?? 0,
+            color: "#EC4899",
           },
           {
-            key: "cashCommission",
+            key: "cashOwed",
             label: "Cash Owed",
             value: cashTracker?.commissionOwed ?? 0,
             color: "#A855F7",
-            subtitle: "oto_cash_commission_tracker",
           },
         ]);
         if (data.tenant) {
           setLedger((prev) => ({
             ...prev,
             escrowActive: data.tenant!.escrowTotal,
-            cashTally: cashLedger?.cashTally ?? 0,
-            openDebts: cashLedger?.openDebts ?? 0,
             cashCommission: cashTracker?.commissionOwed ?? 0,
+            cashInHands: data.tenant!.cashInAgentsHands,
           }));
         }
       }
@@ -374,10 +430,9 @@ export default function FinancialModule({
           commission: c?.balance ?? 0,
           settlement_blocked: s?.blocked ?? 0,
           lot: l?.balance ?? 0,
-          cashTally: ledger.cashTally,
-          escrow: ledger.escrowActive,
-          openDebts: ledger.openDebts,
           cashCommission: ledger.cashCommission,
+          escrow: ledger.escrowActive,
+          cashInHands: ledger.cashInHands,
         },
         null,
         2,
@@ -410,13 +465,25 @@ export default function FinancialModule({
         const amt =
           scenario.id === "topup"
             ? settings.topUpAmount
-            : scenario.id === "booking"
+            : scenario.id === "booking" || scenario.id === "booking-completed"
               ? bookingFlowAmount(flow, settings)
               : scenario.id.startsWith("cancel-")
                 ? cancelFlowAmount(flow, settings)
                 : scenario.id === "overstay"
                   ? overstayFlowAmount(flow, settings, overstayFareRef.current)
-                  : flow.amount;
+                  : scenario.id === "gate-wallet"
+                    ? gateFlowAmount(
+                        flow,
+                        settings.hourlyRate,
+                        settings.commissionRate,
+                      )
+                    : scenario.id === "gate-cash"
+                      ? gateCashFlowAmount(
+                          flow,
+                          settings.hourlyRate,
+                          settings.commissionRate,
+                        )
+                      : flow.amount;
         amountsByFlowId.set(flow.id, amt);
         if (flow.from !== flow.to)
           netByWallet.set(flow.from, (netByWallet.get(flow.from) ?? 0) - amt);
@@ -435,9 +502,13 @@ export default function FinancialModule({
       const displayFlow =
         scenario.id === "topup"
           ? settings.topUpAmount
-          : scenario.id === "booking"
+          : scenario.id === "booking" || scenario.id === "booking-completed"
             ? dynamicFare
-            : flows.reduce((s, f) => s + f.amount, 0);
+            : scenario.id === "gate-wallet"
+              ? gateFareAmount(settings.hourlyRate)
+              : scenario.id === "gate-cash"
+                ? gateFareAmount(settings.hourlyRate)
+                : flows.reduce((s, f) => s + f.amount, 0);
 
       const isHeldEscrow =
         scenario.id === "booking-completed" && !settings.autoReleaseEscrow;
@@ -591,6 +662,11 @@ export default function FinancialModule({
                 const lotIdx = next.findIndex((w) => w.id === "lot");
                 if (lotIdx !== -1)
                   next[lotIdx] = { ...next[lotIdx], balance: 0 };
+                if (scenario.id === "settle-cash") {
+                  const ctIdx = next.findIndex((w) => w.id === "cash-tracker");
+                  if (ctIdx !== -1)
+                    next[ctIdx] = { ...next[ctIdx], balance: 0 };
+                }
               }
             }
 
@@ -838,7 +914,9 @@ export default function FinancialModule({
           scenario.id === "cancel-full" ||
           scenario.id === "cancel-partial" ||
           scenario.id === "cancel-none" ||
-          scenario.id === "overstay";
+          scenario.id === "overstay" ||
+          scenario.id === "settle-digital" ||
+          scenario.id === "settle-cash";
 
         if (!isReal) {
           finish();
@@ -868,7 +946,7 @@ export default function FinancialModule({
             "gate-cash",
           ];
           if (blockedScenarios.includes(scenario.id) && !isCancelFlow) {
-            const active = await checkActiveBooking();
+            const active = await checkActiveBooking(settings.commissionRate);
             if (active?.hasActive) {
               toast("🚫 Active booking exists", {
                 description: `${active.bookingRef} is ACTIVE. Release escrow or Hard Reset first.`,
@@ -905,6 +983,10 @@ export default function FinancialModule({
             result = await handleGateWallet();
           } else if (scenario.id === "gate-cash") {
             result = await handleGateCash(settings, emit);
+          } else if (scenario.id === "settle-digital") {
+            result = await handleSettleDigital(emit);
+          } else if (scenario.id === "settle-cash") {
+            result = await handleSettleCash(emit);
           } else if (scenario.id === "overstay") {
             result = await handleOverstay(
               settings,
@@ -990,36 +1072,42 @@ export default function FinancialModule({
               );
               setMetrics([
                 {
-                  key: "circulation",
-                  label: "Total Circulation",
-                  value: live.driver.balance,
-                  color: "#378ADD",
+                  key: "activeTickets",
+                  label: "Active Tickets",
+                  value: live.tenant?.activeTickets ?? 0,
+                  color: "#3B82F6",
                 },
                 {
-                  key: "commission",
-                  label: "Commission Earned",
-                  value: cashLedger?.lotCommission ?? 0,
-                  color: "#CBFF00",
+                  key: "agentsOnShift",
+                  label: "Agents on Shift",
+                  value: live.tenant?.agentsOnShift ?? 0,
+                  color: "#14B8A6",
                 },
                 {
-                  key: "escrow",
-                  label: "Escrow Held",
-                  value: live.tenant?.escrowTotal ?? 0,
-                  color: "#BA7517",
+                  key: "cashInHands",
+                  label: "Cash in Hands",
+                  value: live.tenant?.cashInAgentsHands ?? 0,
+                  color: "#F59E0B",
                 },
                 {
-                  key: "lotRevenue",
-                  label: "Lot Revenue",
-                  value: live.tenant?.merchantBalance ?? 0,
-                  color: "#005249",
+                  key: "pendingSettlements",
+                  label: "Pending Settlements",
+                  value: live.tenant?.pendingSettlements ?? 0,
+                  color: "#EC4899",
+                },
+                {
+                  key: "cashOwed",
+                  label: "Cash Owed",
+                  value: cashLedger?.cashTally ?? 0,
+                  color: "#A855F7",
                 },
               ]);
               if (live.tenant) {
                 setLedger((prev) => ({
                   ...prev,
                   escrowActive: live.tenant!.escrowTotal,
-                  cashTally: cashLedger?.cashTally ?? 0,
-                  openDebts: cashLedger?.openDebts ?? 0,
+                  cashCommission: cashLedger?.cashTally ?? 0,
+                  cashInHands: live.tenant!.cashInAgentsHands,
                 }));
               }
             }
@@ -1047,7 +1135,7 @@ export default function FinancialModule({
 
       const run = async () => {
         if (blocksBooking && !isCancelFlow) {
-          const active = await checkActiveBooking();
+          const active = await checkActiveBooking(settings.commissionRate);
           if (active?.hasActive) {
             toast("🚫 Active booking exists", {
               description: `${active.bookingRef} is ACTIVE with ~${active.escrowAmount.toFixed(1)} MAD in escrow. Release escrow or Hard Reset first.`,
@@ -1113,11 +1201,10 @@ export default function FinancialModule({
     setActiveBooking(null);
     lastBookingRef.current = null;
     setLedger({
-      cashTally: 0,
+      cashCommission: 0,
       escrowActive: 0,
       escrowReleased: 0,
-      openDebts: 0,
-      cashCommission: 0,
+      cashInHands: 0,
     });
     simDepthRef.current = 0;
     onActivity(null as unknown as string);
@@ -1166,6 +1253,92 @@ export default function FinancialModule({
       });
     }
   }, [resetSim, emit]);
+
+  const handleReleaseAgentToManager = useCallback(async () => {
+    // Snapshot agent cash amount before the API call
+    const cashState = await fetchCashFlowState();
+    const agentAmount = cashState.agentCash;
+
+    const r = await releaseAgentToManager();
+    emit(
+      "api",
+      "POST /financial/cash-flow/release-to-manager",
+      r.success
+        ? `${formatMAD(agentAmount)} MAD released to manager`
+        : (r.message ?? "Failed"),
+      r.success ? "ok" : "error",
+      { amount: `${agentAmount} MAD`, from: "agent-cash", to: "manager-cash" },
+    );
+    toast(r.success ? r.message : "No cash to release", {
+      description: r.success ? undefined : "Run Gate Cash first",
+    });
+
+    if (r.success && agentAmount > 0) {
+      // Animate agent-cash → manager-cash edge on the canvas
+      setActiveFlowPairs(new Set(["agent-cash→manager-cash"]));
+      setActiveWallets(new Set(["agent-cash", "manager-cash"]));
+      setWallets((prev) =>
+        prev.map((w) => {
+          if (w.id === "agent-cash")
+            return { ...w, previousBalance: w.balance, balance: 0 };
+          if (w.id === "manager-cash")
+            return {
+              ...w,
+              previousBalance: w.balance,
+              balance: w.balance + agentAmount,
+            };
+          return w;
+        }),
+      );
+      setTimeout(() => {
+        setActiveFlowPairs(new Set());
+        setActiveWallets(new Set());
+      }, 3000);
+    }
+  }, [emit]);
+
+  const handleReleaseManagerToTenant = useCallback(async () => {
+    // Snapshot manager cash amount before the API call
+    const cashState = await fetchCashFlowState();
+    const managerAmount = cashState.managerCash;
+
+    const r = await releaseManagerToTenant();
+    emit(
+      "api",
+      "POST /financial/cash-flow/release-to-tenant",
+      r.success
+        ? `${formatMAD(managerAmount)} MAD deposited to Lot Revenue`
+        : (r.message ?? "Failed"),
+      r.success ? "ok" : "error",
+      { amount: `${managerAmount} MAD`, from: "manager-cash", to: "lot" },
+    );
+    toast(r.success ? r.message : "No cash to release", {
+      description: r.success ? undefined : "Release from agents first",
+    });
+
+    if (r.success && managerAmount > 0) {
+      // Animate manager-cash → lot edge on the canvas
+      setActiveFlowPairs(new Set(["manager-cash→lot"]));
+      setActiveWallets(new Set(["manager-cash", "lot"]));
+      setWallets((prev) =>
+        prev.map((w) => {
+          if (w.id === "manager-cash")
+            return { ...w, previousBalance: w.balance, balance: 0 };
+          if (w.id === "lot")
+            return {
+              ...w,
+              previousBalance: w.balance,
+              balance: w.balance + managerAmount,
+            };
+          return w;
+        }),
+      );
+      setTimeout(() => {
+        setActiveFlowPairs(new Set());
+        setActiveWallets(new Set());
+      }, 3000);
+    }
+  }, [emit]);
 
   const handleReleaseEscrow = useCallback(async () => {
     emit(
@@ -1255,61 +1428,69 @@ export default function FinancialModule({
             background: T.header,
           }}
         >
-          {(["scenarios", "monitor", "agent-cash", "api-db"] as const).map(
-            (tab) => {
-              const active = rightPanel === tab;
-              const label =
-                tab === "scenarios"
-                  ? "Scenarios"
-                  : tab === "monitor"
-                    ? "Monitor"
-                    : tab === "agent-cash"
-                      ? "Agent & Cash"
+          {(
+            [
+              "scenarios",
+              "monitor",
+              "agent-cash",
+              "api-db",
+              "simulation",
+            ] as const
+          ).map((tab) => {
+            const active = rightPanel === tab;
+            const label =
+              tab === "scenarios"
+                ? "Scenarios"
+                : tab === "monitor"
+                  ? "Monitor"
+                  : tab === "agent-cash"
+                    ? "Agent & Cash"
+                    : tab === "simulation"
+                      ? "Simulation"
                       : "API→DB";
-              return (
-                <button
-                  key={tab}
-                  onClick={() => setRightPanel(tab)}
-                  style={{
-                    flex: 1,
-                    height: 36,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
-                    cursor: "pointer",
-                    fontFamily: "monospace",
-                    fontSize: 9,
-                    fontWeight: 700,
-                    letterSpacing: "0.12em",
-                    textTransform: "uppercase",
-                    color: active ? T.accent : T.textDim,
-                    transition: "color 150ms ease, border-color 150ms ease",
-                  }}
-                >
-                  {label}
-                  {tab === "monitor" && monitorEvents.length > 0 && (
-                    <span
-                      style={{
-                        fontSize: 8,
-                        fontFamily: "monospace",
-                        background: T.accentBg,
-                        border: `1px solid ${T.accent}44`,
-                        color: T.accent,
-                        borderRadius: 3,
-                        padding: "0px 4px",
-                      }}
-                    >
-                      {monitorEvents.length}
-                    </span>
-                  )}
-                </button>
-              );
-            },
-          )}
+            return (
+              <button
+                key={tab}
+                onClick={() => setRightPanel(tab)}
+                style={{
+                  flex: 1,
+                  height: 36,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  background: "transparent",
+                  border: "none",
+                  borderBottom: `2px solid ${active ? T.accent : "transparent"}`,
+                  cursor: "pointer",
+                  fontFamily: "monospace",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: active ? T.accent : T.textDim,
+                  transition: "color 150ms ease, border-color 150ms ease",
+                }}
+              >
+                {label}
+                {tab === "monitor" && monitorEvents.length > 0 && (
+                  <span
+                    style={{
+                      fontSize: 8,
+                      fontFamily: "monospace",
+                      background: T.accentBg,
+                      border: `1px solid ${T.accent}44`,
+                      color: T.accent,
+                      borderRadius: 3,
+                      padding: "0px 4px",
+                    }}
+                  >
+                    {monitorEvents.length}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── Pinned top: settings + metrics (always visible) ── */}
@@ -1326,6 +1507,8 @@ export default function FinancialModule({
               onReset={resetSim}
               onHardReset={handleHardReset}
               onReleaseEscrow={handleReleaseEscrow}
+              onReleaseAgentToManager={handleReleaseAgentToManager}
+              onReleaseManagerToTenant={handleReleaseManagerToTenant}
               log={log}
             />
           ) : rightPanel === "monitor" ? (
@@ -1333,6 +1516,14 @@ export default function FinancialModule({
           ) : rightPanel === "agent-cash" ? (
             <div className="flex-1 overflow-auto p-3">
               <AgentCashPanel />
+            </div>
+          ) : rightPanel === "simulation" ? (
+            <div className="flex-1 overflow-auto">
+              <SimulationPanel
+                onLog={(label, detail, ok) =>
+                  emit("step", label, detail, ok ? "ok" : "error")
+                }
+              />
             </div>
           ) : (
             <div className="flex-1 overflow-auto p-3">

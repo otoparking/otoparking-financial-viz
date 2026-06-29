@@ -5,6 +5,39 @@ function escrowRate(commissionRate: number): number {
   return Math.round((1 - commissionRate) * 100) / 100;
 }
 
+/**
+ * Gate fare: computed from hourly rate × 1h minimum billing.
+ * Matches ParkingFareService → PricingCalculator (Math.ceil(min/60)).
+ */
+export function gateFareAmount(hourlyRate: number = 5): number {
+  return hourlyRate; // 1h minimum × rate/hr
+}
+
+export function gateFlowAmount(
+  flow: { id: string; amount: number },
+  hourlyRate: number = 5,
+  commissionRate: number = 0.1,
+): number {
+  const fare = gateFareAmount(hourlyRate);
+  const comm = Math.round(fare * commissionRate * 100) / 100;
+  const net = Math.round(fare * (1 - commissionRate) * 100) / 100;
+  if (flow.id === "gw1") return comm; // commission
+  if (flow.id === "gw2") return net; // lot revenue
+  return flow.amount;
+}
+
+export function gateCashFlowAmount(
+  flow: { id: string; amount: number },
+  hourlyRate: number = 5,
+  commissionRate: number = 0.1,
+): number {
+  const fare = gateFareAmount(hourlyRate);
+  const comm = Math.round(fare * commissionRate * 100) / 100;
+  if (flow.id === "gc1") return fare; // cash collected
+  if (flow.id === "gc2") return comm; // commission tracked
+  return flow.amount;
+}
+
 export function bookingFlowAmount(
   flow: { id: string; amount: number },
   settings: { bookingDurationHours: number; commissionRate?: number },
@@ -13,6 +46,7 @@ export function bookingFlowAmount(
   const rate = settings.commissionRate ?? 0.1;
   if (flow.id === "bb1") return Math.round(fare * rate * 100) / 100; // commission
   if (flow.id === "bb2") return Math.round(fare * escrowRate(rate) * 100) / 100; // escrow
+  if (flow.id === "bc1") return Math.round(fare * escrowRate(rate) * 100) / 100; // escrow release
   return flow.amount;
 }
 

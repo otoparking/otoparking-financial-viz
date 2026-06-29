@@ -11,6 +11,7 @@ import {
   type AgentTallyDTO,
   type CashLedgerData,
 } from "@/lib/admin-api";
+import { setupAgentForShift, resetAgentShift } from "@/lib/agent-setup";
 import {
   Users,
   Banknote,
@@ -75,7 +76,13 @@ function MetricRow({
 
 /* ── Agent Status Card ──────────────────────────────────────────────── */
 
-function AgentStatusCard({ agent }: { agent: AgentStatusData | null }) {
+function AgentStatusCard({
+  agent,
+  tallyStatus,
+}: {
+  agent: AgentStatusData | null;
+  tallyStatus?: string;
+}) {
   if (!agent) {
     return (
       <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3">
@@ -111,7 +118,10 @@ function AgentStatusCard({ agent }: { agent: AgentStatusData | null }) {
         ) : (
           <StatusBadge ok={false} label="No active lot" />
         )}
-        {agent.todayCashSessions > 0 || agent.todayWalletSessions > 0 ? (
+        {agent.todayCashSessions > 0 ||
+        agent.todayWalletSessions > 0 ||
+        tallyStatus === "OPEN" ||
+        tallyStatus === "AWAITING_FLOAT" ? (
           <StatusBadge ok={true} label="Shift active" />
         ) : (
           <StatusBadge ok={false} label="Shift not started" />
@@ -335,6 +345,8 @@ export default function AgentCashPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(true);
+  const [settingUp, setSettingUp] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -355,6 +367,38 @@ export default function AgentCashPanel() {
     const interval = setInterval(refresh, 30_000);
     return () => clearInterval(interval);
   }, [refresh]);
+
+  const handleSetup = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSettingUp(true);
+    try {
+      const results = await setupAgentForShift();
+      const ok = results.filter((r) => r.success).length;
+      const fail = results.filter((r) => !r.success).length;
+      if (fail === 0) toast.success(`Agent ready - ${ok} steps done`);
+      else toast.warning(`${ok}/${results.length} steps passed`);
+      await refresh();
+    } catch (e) {
+      toast.error(`Setup: ${String(e)}`);
+    } finally {
+      setSettingUp(false);
+    }
+  };
+
+  const handleResetShift = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setResetting(true);
+    try {
+      const results = await resetAgentShift();
+      if (results[0]?.success) toast.success("Shift reset");
+      else toast.error(results[0]?.detail ?? "Failed");
+      await refresh();
+    } catch (e) {
+      toast.error(`Reset: ${String(e)}`);
+    } finally {
+      setResetting(false);
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -410,11 +454,32 @@ export default function AgentCashPanel() {
             </div>
           )}
 
+          {/* Auto-setup / Reset buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleSetup}
+              disabled={settingUp}
+              className="flex-1 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-[10px] font-mono font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 disabled:opacity-50 transition-colors"
+            >
+              {settingUp ? "Setting up..." : "Setup Agent"}
+            </button>
+            <button
+              onClick={handleResetShift}
+              disabled={resetting}
+              className="flex-1 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 text-[10px] font-mono font-semibold text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50 transition-colors"
+            >
+              {resetting ? "Resetting..." : "Reset Shift"}
+            </button>
+          </div>
+
           {snapshot?.issues && <IssuesAlert issues={snapshot.issues} />}
 
           {/* Grid: Agent | Tally */}
           <div className="grid grid-cols-2 gap-2">
-            <AgentStatusCard agent={snapshot?.agent ?? null} />
+            <AgentStatusCard
+              agent={snapshot?.agent ?? null}
+              tallyStatus={snapshot?.tally?.status}
+            />
             <CashTallyCard tally={snapshot?.tally ?? null} />
           </div>
 

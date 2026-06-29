@@ -1,20 +1,18 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Landmark, ShieldCheck, AlertTriangle } from "lucide-react";
+import { Landmark, ShieldCheck, Banknote } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 
 export interface LedgerData {
-  /** Accumulated cash commissions from gate cash sessions (oto_cash_tally) */
-  cashTally: number;
-  /** Active escrow amount still held (oto_escrow where status=ESCROWED) */
+  /** Cash commission owed this period (oto_cash_commission_tracker) */
+  cashCommission: number;
+  /** Active escrow amount still held (oto_escrow_records where status=ESCROWED) */
   escrowActive: number;
   /** Number of completed escrow releases */
   escrowReleased: number;
-  /** Open debts from unreconciled cash sessions (oto_debts) */
-  openDebts: number;
-  /** Cash commission owed from oto_cash_commission_tracker */
-  cashCommission: number;
+  /** Cash physically held by agents right now (oto_agent_cash_tally) */
+  cashInHands: number;
 }
 
 interface LedgerPanelProps {
@@ -76,12 +74,12 @@ export default function LedgerPanel({ data }: LedgerPanelProps) {
         <div style={{ padding: "4px 0 4px" }}>
           <LedgerRow
             icon={<Landmark style={{ width: 12, height: 12 }} />}
-            label="Cash Tally"
-            value={data.cashTally}
+            label="Cash Owed"
+            value={data.cashCommission}
             color={T.green}
             textMuted={T.textMuted}
             textDim={T.textDim}
-            subtitle="oto_cash_tally"
+            subtitle="oto_cash_commission_tracker"
           />
           <LedgerRow
             icon={<ShieldCheck style={{ width: 12, height: 12 }} />}
@@ -90,16 +88,16 @@ export default function LedgerPanel({ data }: LedgerPanelProps) {
             color={T.escrow}
             textMuted={T.textMuted}
             textDim={T.textDim}
-            subtitle={`oto_escrow · ${data.escrowReleased} released`}
+            subtitle={`oto_escrow_records · ${data.escrowReleased} released`}
           />
           <LedgerRow
-            icon={<AlertTriangle style={{ width: 12, height: 12 }} />}
-            label="Open Debts"
-            value={data.openDebts}
-            color={T.red}
+            icon={<Banknote style={{ width: 12, height: 12 }} />}
+            label="Cash in Hands"
+            value={data.cashInHands}
+            color={T.amber}
             textMuted={T.textMuted}
             textDim={T.textDim}
-            subtitle="oto_debts"
+            subtitle="oto_agent_cash_tally"
           />
         </div>
       </div>
